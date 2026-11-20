@@ -384,7 +384,7 @@ export default function Home() {
                 </select>
               )}
               <div className="ability-actions">
-                <button onClick={() => submitAbility("use")} className="ability-btn" disabled={me?.ability_used || me?.ability_cooldown > 0 || abilityBusy || me?.role === "HUNTER"}>
+                <button onClick={() => submitAbility("use")} className="ability-btn" disabled={me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy || me?.role === "HUNTER"}>
                   {me?.ability_used ? "DONE" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
                 </button>
                 <button onClick={() => submitAbility("continue")} className="skip-btn" disabled={me?.ability_used || abilityBusy}>CONTINUE</button>
