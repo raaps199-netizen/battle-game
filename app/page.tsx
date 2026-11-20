@@ -136,9 +136,9 @@ export default function Home() {
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
   }
 
-  async function useAbility() {
+  async function useAbility(noAbility = false) {
     if (!room || !me || me.ability_used || me.ability_cooldown > 0 || abilityBusy) return;
-    if ((me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
+    if (!noAbility && (me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
       setError("Pilih target ability dulu.");
       return;
     }
@@ -151,7 +151,8 @@ export default function Home() {
         room_id: room.id,
         player_id: me.id,
         target_player_id: abilityTarget || null,
-        guessed_role: me.role === "DETECTIVE" ? guessedRole : null
+        guessed_role: me.role === "DETECTIVE" ? guessedRole : null,
+        skip: noAbility
       }
     });
 
@@ -409,11 +410,7 @@ export default function Home() {
                     {me?.ability_used ? "ABILITY DONE" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
                   </button>
                   {!me?.ability_used && !me?.is_ready && me?.role !== "HUNTER" && (me?.ability_cooldown ?? 0) === 0 && (
-                    <button onClick={() => {
-                      setNotice("ABILITY DECLINED · CONTINUING TO ACTION");
-                      setTimeout(() => setNotice(""), 1400);
-                      supabase.from("players").update({ ability_used: true }).eq("id", me.id);
-                    }} className="skip-btn" disabled={abilityBusy}>NO ABILITY</button>
+                    <button onClick={() => useAbility(true)} className="skip-btn" disabled={abilityBusy}>NO ABILITY</button>
                   )}
                 </div>
               </div>
