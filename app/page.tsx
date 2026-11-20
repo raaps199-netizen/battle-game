@@ -256,10 +256,29 @@ export default function Home() {
       return;
     }
     
-    const { error: resolveError } = await supabase.functions.invoke("resolve-round", {
-      body: { room_id: room.id }
-    });
-    if (resolveError) setError(resolveError.message);
+    const { data: roundPlayers, error: roundPlayersError } = await supabase
+      .from("players")
+      .select("id,is_alive,is_ready")
+      .eq("room_id", room.id);
+
+    if (roundPlayersError) {
+      setError(roundPlayersError.message);
+      return;
+    }
+
+    const alivePlayers = (roundPlayers ?? []).filter((p: { is_alive: boolean }) => p.is_alive);
+    const readyPlayers = alivePlayers.filter((p: { is_ready: boolean }) => p.is_ready);
+
+    if (readyPlayers.length === alivePlayers.length && alivePlayers.length > 0) {
+      setNotice("ALL PLAYERS LOCKED · RESOLVING");
+      const { error: resolveError } = await supabase.functions.invoke("resolve-round", {
+        body: { room_id: room.id }
+      });
+      if (resolveError) setError(resolveError.message);
+    } else {
+      setNotice("ACTION LOCKED · WAITING FOR OTHERS");
+      setTimeout(() => setNotice(""), 1800);
+    }
   }
 
   function chooseAttack(name: string) {
