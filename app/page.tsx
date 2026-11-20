@@ -41,6 +41,7 @@ export default function Home() {
       .channel("room-" + room.id)
       .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${room.id}` }, () => loadPlayers(room.id))
       .on("postgres_changes", { event: "*", schema: "public", table: "rooms", filter: `id=eq.${room.id}` }, () => loadRoom(room.id))
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_states", filter: `room_id=eq.${room.id}` }, () => loadGameState(room.id))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [room?.id]);
@@ -48,6 +49,11 @@ export default function Home() {
   async function loadRoom(id: string) {
     const { data } = await supabase.from("rooms").select("*").eq("id", id).single();
     if (data) setRoom(data);
+  }
+
+  async function loadGameState(roomId: string) {
+    const { data } = await supabase.from("game_states").select("phase").eq("room_id", roomId).single();
+    if (data?.phase === "ability" || data?.phase === "action") setPhase(data.phase);
   }
 
   async function loadPlayers(roomId: string) {
@@ -69,7 +75,7 @@ export default function Home() {
     const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: newRoom.id, name: name.trim(), role: "KING" });
     if (playerError) { setError(playerError.message); setBusy(false); return; }
     await supabase.from("game_states").insert({ room_id: newRoom.id });
-    setRoom(newRoom); await loadPlayers(newRoom.id); setBusy(false);
+    setRoom(newRoom); await loadPlayers(newRoom.id); await loadGameState(newRoom.id); setBusy(false);
   }
 
   async function joinRoom() {
@@ -81,13 +87,14 @@ export default function Home() {
     const playerId = localStorage.getItem("battle_player_id")!;
     const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: found.id, name: name.trim() });
     if (playerError) { setError(playerError.message); setBusy(false); return; }
-    setRoom(found); await loadPlayers(found.id); setBusy(false);
+    setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
   }
 
   async function startGame() {
     if (!room || players.length < 2) return;
     await supabase.from("rooms").update({ status: "active" }).eq("id", room.id);
     await supabase.from("game_states").update({ phase: "ability" }).eq("room_id", room.id);
+    await loadGameState(room.id);
   }
 
   async function lockAction() {
@@ -103,8 +110,7 @@ export default function Home() {
       round: room.round
     }, { onConflict: "room_id,player_id,round" });
     await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
-    setPhase("action");
-
+    
     const { error: resolveError } = await supabase.functions.invoke("resolve-round", {
       body: { room_id: room.id }
     });
@@ -170,7 +176,7 @@ export default function Home() {
             <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once at least 2 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 2}>START MATCH</button></div>
           ) : (
             <>
-              <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={() => setPhase("action")} className="ability-btn" disabled={me?.is_ready}>USE ABILITY</button></div>
+              <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={() => supabase.from("game_states").update({ phase: "action" }).eq("room_id", room.id)} className="ability-btn" disabled={me?.is_ready}>USE ABILITY</button></div>
               <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
             </>
           )}
