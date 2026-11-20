@@ -136,29 +136,19 @@ export default function Home() {
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
   }
 
-  async function useAbility(noAbility = false) {
-    if (!room || !me || me.ability_used || me.ability_cooldown > 0 || abilityBusy) return;
-    if (!noAbility && (me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
-      setError("Pilih target ability dulu.");
-      return;
+  async function submitAbility(decision: "use" | "continue") {
+    if (!room || !me || me.ability_used || abilityBusy) return;
+    if (decision === "use" && me.ability_cooldown > 0) return;
+    if (decision === "use" && (me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
+      setError("Pilih target ability dulu."); return;
     }
-
-    setAbilityBusy(true);
-    setError("");
-
+    setAbilityBusy(true); setError("");
     const { error } = await supabase.functions.invoke("use-ability", {
-      body: {
-        room_id: room.id,
-        player_id: me.id,
-        target_player_id: abilityTarget || null,
-        guessed_role: me.role === "DETECTIVE" ? guessedRole : null,
-        skip: noAbility
-      }
+      body: { room_id: room.id, player_id: me.id, decision, target_player_id: abilityTarget || null,
+        guessed_role: me.role === "DETECTIVE" ? guessedRole : null }
     });
-
     if (error) setError(error.message);
-    else await loadGameState(room.id);
-
+    else { await loadPlayers(room.id); await loadGameState(room.id); }
     setAbilityBusy(false);
   }
 
@@ -230,9 +220,7 @@ export default function Home() {
   async function lockAction(nextTarget = target) {
     if (!room || !me || phase !== "action") return;
     if (attack !== "RELOAD" && !nextTarget) return;
-    const chosen = attacks.find(a => a.name === attack);
-    if (attack !== "RELOAD" && !chosen) return;
-    if (useHollow && !(me.inventory ?? []).includes("HOLLOW_BULLET")) return setError("Lu nggak punya Hollow Bullet.");
+        if (useHollow && !(me.inventory ?? []).includes("HOLLOW_BULLET")) return setError("Lu nggak punya Hollow Bullet.");
     if (useBoomerang && !(me.inventory ?? []).includes("BOOMERANG")) return setError("Lu nggak punya Boomerang.");
     setError("");
     const { error: actionError } = await supabase.from("actions").upsert({
@@ -240,7 +228,7 @@ export default function Home() {
       player_id: me.id,
       target_player_id: attack === "RELOAD" ? null : nextTarget,
       action_type: attack,
-      action_data: { ammo_cost: chosen?.cost ?? 0, shield, hollow_bullet: useHollow, use_boomerang: useBoomerang },
+      action_data: { shield, hollow_bullet: useHollow, use_boomerang: useBoomerang },
       locked: true,
       round: room.round
     }, { onConflict: "room_id,player_id,round" });
@@ -341,7 +329,7 @@ export default function Home() {
             <div key={p.id} className={p.id === me?.id ? "player-card active" : "player-card"}>
               <div className={"avatar " + (p.id === me?.id ? "cyan" : "violet")}>{p.id === me?.id ? "👑" : "?"}</div>
               <div className="player-info"><strong>{p.name.toUpperCase()}</strong><span>{p.id === me?.id ? (p.role ?? "UNKNOWN") : "ROLE HIDDEN"} · {p.round_wins} WIN</span><div className="hp-row">{Array.from({length: Math.max(3,p.max_hp)}, (_,i) => <i key={i} className={i < p.hp ? "hp on" : "hp"} />)}</div></div>
-              <div className="ammo">{p.ammo} <span>●</span></div>
+              
             </div>
           ))}
         </aside>
@@ -349,13 +337,13 @@ export default function Home() {
         <section className="arena-panel">
           <div className="phase-banner">
             <span className="phase-index">{phase === "ability" ? "01" : phase === "action" ? "02" : "03"}</span>
-            <div><strong>{phase === "ability" ? "ABILITY" : phase === "action" ? "ACTION" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Choose your ability action." : phase === "action" ? "Choose an action, then click a player." : phase === "resolution" ? "Resolving..." : "Match complete."}</span></div>
+            <div><strong>{phase === "ability" ? "ABILITY" : phase === "action" ? "ACTION" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Choose ability or item, then continue when done." : phase === "action" ? "Choose an action, then click a player." : phase === "resolution" ? "Resolving..." : "Match complete."}</span></div>
             <div className="ready-count">{players.filter(p => p.is_ready).length} / {alive.length} READY</div>
           </div>
           <div className="arena">
             <div className="grid-floor" />
             
-            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"} ${phase === "action" && attack !== "RELOAD" && !me?.is_ready && p.id !== me?.id ? "attackable" : ""} ${p.id === target && !me?.is_ready ? "target-selected" : ""}`} onClick={() => clickPlayer(p.id)}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{shotFx === p.id && <span className="hit-bullet">●</span>}{p.id===me?.id?"👑":"?"}</div>{p.id === me?.id && shield !== "NONE" && <div className="shield-visual">◇ {shield}</div>}<span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
+            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"} ${phase === "action" && attack !== "RELOAD" && !me?.is_ready && p.id !== me?.id ? "attackable" : ""} ${p.id === target && !me?.is_ready ? "target-selected" : ""}`} onClick={() => clickPlayer(p.id)}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{shotFx === p.id && <span className="hit-bullet">●</span>}{p.id===me?.id?"👑":"?"}</div>{p.id === me?.id && shield !== "NONE" && <div className="shield-visual">◇ {shield}</div>}<span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP</small></div>)}
           </div>
           <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? roomEvent : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
         </section>
@@ -377,64 +365,62 @@ export default function Home() {
               <div className="ready-summary">{players.filter(p => p.is_ready).length} / {players.length} READY</div>
               <button className="ability-btn" onClick={startGame} disabled={players.length < 2 || players.length > 6 || me?.id !== room.host_player_id || players.filter(p => p.is_ready).length < 1}>START MATCH</button>
             </div>
-          ) : (
-            <>
-              <div className="ability-card">
-                <div className="card-top"><span>⚡ ABILITY</span><span className="available">{me?.ability_cooldown ? `CD ${me.ability_cooldown}` : me?.ability_used ? "USED" : "READY"}</span></div>
-                <strong>{me?.role ?? "UNKNOWN"}</strong>
-                <p>{
-                  me?.role === "KING" ? "Gain +2 ammo now, up to the ammo cap." :
-                  me?.role === "DETECTIVE" ? "Guess one player's role. A correct guess eliminates them this round." :
-                  me?.role === "GLITCH" ? "Become untargetable for this round." :
-                  me?.role === "WUKONG" ? "Double your clone count. Clones increase your resource strength." :
-                  me?.role === "NINJA" ? "Change your target before the round resolves." :
-                  me?.role === "HUNTER" ? "Passive ability. Successful hits restore 1 HP." :
-                  "No active ability."
-                }</p>
-                {(me?.role === "DETECTIVE" || me?.role === "NINJA") && (
-                  <div className="target-buttons">
-                    {players.filter(p => p.id !== me?.id && p.is_alive).map(p => (
-                      <button key={p.id} className={abilityTarget === p.id ? "selected" : ""} onClick={() => setAbilityTarget(p.id)}>
-                        {p.name.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {me?.role === "DETECTIVE" && (
-                  <select value={guessedRole} onChange={e => setGuessedRole(e.target.value)} className="role-select">
-                    {["KING","DETECTIVE","GLITCH","WUKONG","HUNTER","NINJA"].map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                )}
-                <div className="ability-actions">
-                  <button onClick={() => useAbility(false)} className="ability-btn" disabled={me?.is_ready || me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy || me?.role === "HUNTER"}>
-                    {me?.ability_used ? "ABILITY DONE" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
-                  </button>
-                  {!me?.ability_used && !me?.is_ready && me?.role !== "HUNTER" && (me?.ability_cooldown ?? 0) === 0 && (
-                    <button onClick={() => useAbility(true)} className="skip-btn" disabled={abilityBusy}>NO ABILITY</button>
-                  )}
+          ) : phase === "ability" ? (
+            <div className="ability-card">
+              <div className="card-top"><span>ROUND {room.round} · ABILITY / ITEM</span><span>{me?.ability_used ? "DONE" : "WAITING"}</span></div>
+              <div className="round-intro"><strong>ABILITY / ITEM PHASE</strong><p>Role dan item lu sudah diacak. Pilih USE ABILITY atau CONTINUE. Phase lanjut setelah semua player selesai.</p></div>
+              <div className="loadout-block"><span>YOUR ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong><p>{me?.role === "HUNTER" ? "Passive ability, jadi tidak perlu diaktifkan." : "Ability aktif tersedia mulai round 1."}</p></div>
+              <div className="loadout-block"><span>YOUR ITEM</span><strong>{(me?.inventory ?? [me?.item ?? "NONE"]).join(" · ")}</strong><p>Item lu ditentukan random saat match dimulai.</p></div>
+              {(me?.role === "DETECTIVE" || me?.role === "NINJA") && !me?.ability_used && (
+                <div className="target-buttons">
+                  {players.filter(p => p.id !== me?.id && p.is_alive).map(p => (
+                    <button key={p.id} className={abilityTarget === p.id ? "selected" : ""} onClick={() => setAbilityTarget(p.id)}>{p.name.toUpperCase()}</button>
+                  ))}
                 </div>
+              )}
+              {me?.role === "DETECTIVE" && !me?.ability_used && (
+                <select value={guessedRole} onChange={e => setGuessedRole(e.target.value)} className="role-select">
+                  {["KING","DETECTIVE","GLITCH","WUKONG","HUNTER","NINJA"].map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              )}
+              <div className="ability-actions">
+                <button onClick={() => submitAbility("use")} className="ability-btn" disabled={me?.ability_used || me?.ability_cooldown > 0 || abilityBusy || me?.role === "HUNTER"}>
+                  {me?.ability_used ? "DONE" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
+                </button>
+                <button onClick={() => submitAbility("continue")} className="skip-btn" disabled={me?.ability_used || abilityBusy}>CONTINUE</button>
               </div>
-              </>
-            )}
+            </div>
+          ) : phase === "action" ? (
+            <div className="ability-card">
+              <div className="card-top"><span>ROUND {room.round} · ACTION</span><span>{me?.is_ready ? "LOCKED" : "CHOOSE"}</span></div>
+              <div className="round-intro"><strong>ACTION PHASE</strong><p>Pilih satu action. Setelah dikunci, tunggu player lain. Semua action resolve bareng.</p></div>
+              <div className="selected-action-card"><span>SELECTED</span><strong>{attack === "RELOAD" ? "RELOAD" : attack}</strong>{shield !== "NONE" && <small>◇ {shield} SHIELD</small>}</div>
+              <p className="phase-lock">{me?.is_ready ? "ACTION LOCKED · WAITING FOR OTHERS" : attack === "RELOAD" ? "RELOAD akan langsung dikunci." : "Pilih attack type lalu klik profile target."}</p>
+            </div>
+          ) : phase === "resolution" ? (
+            <div className="ability-card phase-center"><div className="modal-kicker">RESOLUTION</div><strong>PROCESSING ROUND</strong><p>Semua action sedang di-resolve secara simultan.</p></div>
+          ) : (
+            <div className="ability-card phase-center"><div className="modal-kicker">MATCH END</div><strong>{matchWinner?.name ?? "WINNER"} WINS</strong><p>First to 3 round wins.</p></div>
+          )            )}
         </aside>
       </section>
-      <div className="action-dock">
+      {phase === "action" && <div className="action-dock">
         <div className="action-status">
-          <span>AMMO {me?.ammo ?? 0} / 4</span>
+          <span>AMMO UNLIMITED</span>
           <span>{me?.is_ready ? "ACTION LOCKED" : phase === "action" ? "CHOOSE ACTION" : "WAITING..."}</span>
         </div>
         <div className="action-buttons">
-          <button className="dock-btn" onClick={() => { setAttack("RELOAD"); lockAction(); }} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) >= 4}>
+          <button className="dock-btn" onClick={() => { setAttack("RELOAD"); lockAction(); }} disabled={me?.is_ready || phase !== "action"}>
             <span>↻</span> RELOAD
           </button>
-          <button className="dock-btn shoot" onClick={() => setActionPopup("shoot")} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) < 1}>
+          <button className="dock-btn shoot" onClick={() => setActionPopup("shoot")} disabled={me?.is_ready || phase !== "action"}>
             <span>●</span> SHOOT
           </button>
           <button className="dock-btn shield" onClick={() => setActionPopup("shield")} disabled={me?.is_ready || phase !== "action"}>
             <span>◇</span> SHIELD
           </button>
         </div>
-      </div>
+      </div>}
 
       {actionPopup === "shoot" && !me?.is_ready && (
         <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
@@ -442,14 +428,11 @@ export default function Home() {
             <div className="modal-kicker">SHOOT</div>
             <strong>SELECT AMMO TYPE</strong>
             <div className="shoot-options">
-              {attacks.map(a => {
-                const enough = (me?.ammo ?? 0) >= a.cost;
-                return (
-                  <button key={a.name} className={enough ? "shoot-option available" : "shoot-option"} disabled={!enough} onClick={() => chooseAttack(a.name)}>
-                    <b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small>
-                  </button>
-                );
-              })}
+              {attacks.map(a => (
+                <button key={a.name} className="shoot-option available" onClick={() => chooseAttack(a.name)}>
+                  <b>{a.icon}</b><span>{a.name}</span><small>UNLIMITED</small>
+                </button>
+              ))}
             </div>
             <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
           </div>
