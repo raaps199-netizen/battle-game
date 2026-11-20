@@ -103,7 +103,27 @@ export default function Home() {
   }
 
   async function startGame() {
-    if (!room || players.length < 2) return;
+    if (!room || players.length < 3 || players.length > 6) return;
+    const rolePool = ["KING", "DETECTIVE", "GLITCH", "WUKONG", "HUNTER", "NINJA"];
+    const shuffledRoles = [...rolePool].sort(() => Math.random() - 0.5).slice(0, players.length);
+    const itemPool = ["BOOTS", "JUGGERNAUT", "DOCUMENTS", "AEGIS", "HOLLOW_BULLET", "BOOMERANG"];
+
+    for (let i = 0; i < players.length; i++) {
+      await supabase.from("players").update({
+        role: shuffledRoles[i],
+        item: itemPool[Math.floor(Math.random() * itemPool.length)],
+        hp: 3,
+        max_hp: 3,
+        ammo: 4,
+        round_wins: 0,
+        is_alive: true,
+        is_ready: false,
+        ability_used: false,
+        ability_cooldown: 0,
+        item_uses: 0
+      }).eq("id", players[i].id);
+    }
+
     await supabase.from("rooms").update({ status: "active" }).eq("id", room.id);
     await supabase.from("game_states").update({ phase: "ability" }).eq("room_id", room.id);
     await loadGameState(room.id);
@@ -161,7 +181,7 @@ export default function Home() {
           {players.map(p => (
             <div key={p.id} className={p.id === me?.id ? "player-card active" : "player-card"}>
               <div className={"avatar " + (p.id === me?.id ? "cyan" : "violet")}>{p.id === me?.id ? "👑" : "?"}</div>
-              <div className="player-info"><strong>{p.name.toUpperCase()}</strong><span>{p.role ?? "UNKNOWN"}</span><div className="hp-row">{Array.from({length: Math.max(3,p.max_hp)}, (_,i) => <i key={i} className={i < p.hp ? "hp on" : "hp"} />)}</div></div>
+              <div className="player-info"><strong>{p.name.toUpperCase()}</strong><span>{p.role ?? "UNKNOWN"} · {p.round_wins} WIN</span><div className="hp-row">{Array.from({length: Math.max(3,p.max_hp)}, (_,i) => <i key={i} className={i < p.hp ? "hp on" : "hp"} />)}</div></div>
               <div className="ammo">{p.ammo} <span>●</span></div>
             </div>
           ))}
@@ -185,7 +205,7 @@ export default function Home() {
           <div className="panel-title">YOUR LOADOUT</div>
           <div className="role-card"><div className="role-icon">◆</div><div><span>ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong></div><div className="passive">PASSIVE</div></div>
           {room.status === "lobby" ? (
-            <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once at least 2 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 2}>START MATCH</button></div>
+            <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once at least 2 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 3}>START MATCH</button></div>
           ) : (
             <>
               <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={useAbility} className="ability-btn" disabled={me?.is_ready || me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy}>{me?.ability_used ? "ABILITY USED" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : "USE ABILITY"}</button></div>
