@@ -24,3 +24,5 @@
 .ability-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .skip-btn { border: 1px solid rgba(255,255,255,.15); background: transparent; color: #aaa; padding: 10px 14px; cursor: pointer; }
 .role-select { width: 100%; margin: 8px 0; padding: 9px; background: #10151b; color: #fff; border: 1px solid rgba(255,255,255,.15); }
+
+.lobby-ready-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 7px}.ready-btn.ready-active{border-color:rgba(109,255,177,.75);background:rgba(109,255,177,.14);color:var(--green)}.leave-btn{padding:9px;border:1px solid rgba(255,112,187,.35);background:rgba(255,112,187,.05);color:var(--pink);cursor:pointer;font-weight:700;letter-spacing:1px}.ready-summary{text-align:center;margin:6px 0 10px;color:var(--muted);font-family:monospace;font-size:8px;letter-spacing:1px}.ready-popup{position:fixed;top:86px;left:50%;transform:translateX(-50%);z-index:30;padding:10px 18px;border:1px solid rgba(109,255,177,.5);background:rgba(8,18,14,.94);color:var(--green);font-family:monospace;font-size:9px;letter-spacing:1px;box-shadow:0 0 28px rgba(109,255,177,.12)}
