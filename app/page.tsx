@@ -216,6 +216,12 @@ export default function Home() {
       body: { room_id: freshRoom.id, player_id: freshMe.id }
     });
     if (error) { setError(error.message); return; }
+
+    // Lobby READY state must not carry into the first combat phase.
+    // The same flag is used for the combat lock, so leaving it true
+    // would make every action button look disabled after START MATCH.
+    await supabase.from("players").update({ is_ready: false }).eq("room_id", room.id);
+
     await loadRoom(room.id);
     await loadPlayers(room.id);
     await loadGameState(room.id);
