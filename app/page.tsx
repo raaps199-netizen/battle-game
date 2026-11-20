@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
-const players = [
-  { name: "DAFFA", role: "KING", hp: 3, ammo: 4, color: "cyan", avatar: "👑" },
-  { name: "BUDI", role: "UNKNOWN", hp: 3, ammo: 2, color: "violet", avatar: "?" },
-  { name: "CACA", role: "UNKNOWN", hp: 3, ammo: 3, color: "pink", avatar: "?" }
-];
+type Room = { id: string; code: string; status: string; round: number };
+type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; round_wins: number; is_alive: boolean; is_ready: boolean };
 
 const attacks = [
   { name: "SINGLE", cost: 1, icon: "•" },
@@ -15,27 +13,131 @@ const attacks = [
   { name: "BAZOOKA", cost: 4, icon: "◉" }
 ];
 
+function makeCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
 export default function Home() {
+  const [name, setName] = useState("");
+  const [roomCode, setRoomCode] = useState("");
+  const [room, setRoom] = useState<Room | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [me, setMe] = useState<Player | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"ability" | "action">("ability");
-  const [target, setTarget] = useState("BUDI");
+  const [target, setTarget] = useState("");
   const [attack, setAttack] = useState("SINGLE");
 
+  useEffect(() => {
+    const saved = localStorage.getItem("battle_player_id");
+    if (!saved) localStorage.setItem("battle_player_id", crypto.randomUUID());
+  }, []);
+
+  useEffect(() => {
+    if (!room) return;
+    const channel = supabase
+      .channel("room-" + room.id)
+      .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${room.id}` }, () => loadPlayers(room.id))
+      .on("postgres_changes", { event: "*", schema: "public", table: "rooms", filter: `id=eq.${room.id}` }, () => loadRoom(room.id))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [room?.id]);
+
+  async function loadRoom(id: string) {
+    const { data } = await supabase.from("rooms").select("*").eq("id", id).single();
+    if (data) setRoom(data);
+  }
+
+  async function loadPlayers(roomId: string) {
+    const { data } = await supabase.from("players").select("*").eq("room_id", roomId).order("created_at");
+    if (data) {
+      setPlayers(data);
+      const myId = localStorage.getItem("battle_player_id");
+      setMe(data.find((p: Player) => p.id === myId) ?? null);
+    }
+  }
+
+  async function createRoom() {
+    if (!name.trim()) return setError("Isi nama lu dulu jir.");
+    setBusy(true); setError("");
+    const code = makeCode();
+    const { data: newRoom, error: roomError } = await supabase.from("rooms").insert({ code }).select().single();
+    if (roomError || !newRoom) { setError(roomError?.message ?? "Gagal bikin room."); setBusy(false); return; }
+    const playerId = localStorage.getItem("battle_player_id")!;
+    const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: newRoom.id, name: name.trim(), role: "KING" });
+    if (playerError) { setError(playerError.message); setBusy(false); return; }
+    await supabase.from("game_states").insert({ room_id: newRoom.id });
+    setRoom(newRoom); await loadPlayers(newRoom.id); setBusy(false);
+  }
+
+  async function joinRoom() {
+    if (!name.trim() || !roomCode.trim()) return setError("Nama sama room code-nya isi dulu.");
+    setBusy(true); setError("");
+    const { data: found, error: findError } = await supabase.from("rooms").select("*").eq("code", roomCode.trim().toUpperCase()).single();
+    if (findError || !found) { setError("Room nggak ketemu."); setBusy(false); return; }
+    if (found.status !== "lobby") { setError("Room itu udah mulai."); setBusy(false); return; }
+    const playerId = localStorage.getItem("battle_player_id")!;
+    const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: found.id, name: name.trim() });
+    if (playerError) { setError(playerError.message); setBusy(false); return; }
+    setRoom(found); await loadPlayers(found.id); setBusy(false);
+  }
+
+  async function startGame() {
+    if (!room || players.length < 2) return;
+    await supabase.from("rooms").update({ status: "active" }).eq("id", room.id);
+    await supabase.from("game_states").update({ phase: "ability" }).eq("room_id", room.id);
+  }
+
+  async function lockAction() {
+    if (!room || !me || !target) return;
+    const chosen = attacks.find(a => a.name === attack)!;
+    await supabase.from("actions").upsert({
+      room_id: room.id,
+      player_id: me.id,
+      target_player_id: target,
+      action_type: attack,
+      action_data: { ammo_cost: chosen.cost, shield: "NONE" },
+      locked: true,
+      round: room.round
+    }, { onConflict: "room_id,player_id,round" });
+    await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
+    setPhase("action");
+  }
+
+  if (!room) return (
+    <main className="lobby-shell">
+      <div className="scanlines" />
+      <div className="lobby-card">
+        <div className="brand"><span className="brand-mark">◆</span><div><div className="brand-name">BATTLE<span>//</span>GAME</div><div className="brand-sub">TACTICAL LIVE COMBAT</div></div></div>
+        <div className="lobby-title">ENTER THE ROOM</div>
+        <p className="lobby-copy">Real-time tactical combat. Pilih room, masuk, lalu tembak-tembakan secara simultan. Karena ternyata manusia masih butuh website buat saling nembak.</p>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="PLAYER NAME" maxLength={20} />
+        <div className="join-row"><input value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} placeholder="ROOM CODE" maxLength={8} /><button onClick={joinRoom} disabled={busy}>JOIN</button></div>
+        <button className="create-btn" onClick={createRoom} disabled={busy}>{busy ? "CONNECTING..." : "CREATE ROOM"}</button>
+        {error && <div className="error-box">{error}</div>}
+        <div className="lobby-note">3–6 PLAYERS · FIRST TO 3 ROUNDS</div>
+      </div>
+    </main>
+  );
+
+  const alive = players.filter(p => p.is_alive);
   return (
     <main className="game-shell">
       <div className="scanlines" />
       <header className="topbar">
         <div className="brand"><span className="brand-mark">◆</span><div><div className="brand-name">BATTLE<span>//</span>GAME</div><div className="brand-sub">TACTICAL LIVE COMBAT</div></div></div>
-        <div className="round-box"><span>ROUND</span><strong>02</strong><small>/ 03</small></div>
-        <div className="status"><span className="live-dot" /> ONLINE <span className="room-code">ROOM: K7X2</span></div>
+        <div className="round-box"><span>ROUND</span><strong>{String(room.round).padStart(2, "0")}</strong><small>/ 03</small></div>
+        <div className="status"><span className="live-dot" /> ONLINE <span className="room-code">ROOM: {room.code}</span></div>
       </header>
 
       <section className="hud-grid">
         <aside className="side-panel left-panel">
-          <div className="panel-title">PLAYERS <span>3 / 6</span></div>
-          {players.map((p, i) => (
-            <div key={p.name} className={i === 0 ? "player-card active" : "player-card"}>
-              <div className={"avatar " + p.color}>{p.avatar}</div>
-              <div className="player-info"><strong>{p.name}</strong><span>{p.role}</span><div className="hp-row">{[0,1,2,3,4].map(x => <i key={x} className={x < p.hp ? "hp on" : "hp"} />)}</div></div>
+          <div className="panel-title">PLAYERS <span>{players.length} / 6</span></div>
+          {players.map(p => (
+            <div key={p.id} className={p.id === me?.id ? "player-card active" : "player-card"}>
+              <div className={"avatar " + (p.id === me?.id ? "cyan" : "violet")}>{p.id === me?.id ? "👑" : "?"}</div>
+              <div className="player-info"><strong>{p.name.toUpperCase()}</strong><span>{p.role ?? "UNKNOWN"}</span><div className="hp-row">{Array.from({length: Math.max(3,p.max_hp)}, (_,i) => <i key={i} className={i < p.hp ? "hp on" : "hp"} />)}</div></div>
               <div className="ammo">{p.ammo} <span>●</span></div>
             </div>
           ))}
@@ -45,43 +147,30 @@ export default function Home() {
           <div className="phase-banner">
             <span className="phase-index">PHASE 0{phase === "ability" ? "1" : "2"}</span>
             <div><strong>{phase === "ability" ? "ABILITY PHASE" : "ACTION PHASE"}</strong><span>{phase === "ability" ? "Use your ability before locking an action." : "Choose your target and attack."}</span></div>
-            <div className="ready-count">1 / 3 READY</div>
+            <div className="ready-count">{players.filter(p => p.is_ready).length} / {alive.length} READY</div>
           </div>
-
           <div className="arena">
             <div className="grid-floor" />
             <div className="crosshair c1" /><div className="crosshair c2" /><div className="crosshair c3" />
-            <div className="player-node node-a"><div className="node-ring pulse" /><div className="node-core cyan">👑</div><span>YOU</span><small>3 HP · 4 AMMO</small></div>
-            <div className="player-node node-b"><div className="node-ring" /><div className="node-core violet">?</div><span>BUDI</span><small>3 HP · 2 AMMO</small></div>
-            <div className="player-node node-c"><div className="node-ring" /><div className="node-core pink">?</div><span>CACA</span><small>3 HP · 3 AMMO</small></div>
-            <div className="target-line" />
+            {players.slice(0,3).map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c"][i]}`}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{p.id===me?.id?"👑":"?"}</div><span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
           </div>
-
-          <div className="event-log"><span className="log-time">SYSTEM</span>Waiting for all players to lock their action...</div>
+          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? "Waiting for host to start..." : "Server sync active. Actions resolve together."}</div>
         </section>
 
         <aside className="side-panel right-panel">
           <div className="panel-title">YOUR LOADOUT</div>
-          <div className="role-card"><div className="role-icon">👑</div><div><span>ROLE</span><strong>KING</strong></div><div className="passive">PASSIVE</div></div>
-
-          <div className="ability-card">
-            <div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div>
-            <strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p>
-            <button onClick={() => setPhase("action")} className="ability-btn">USE ABILITY</button>
-          </div>
-
-          <div className="action-card">
-            <div className="card-top"><span>ACTION</span><span>AMMO 4 / 4</span></div>
-            <label>TARGET</label>
-            <div className="target-buttons">{["BUDI","CACA"].map(name => <button key={name} className={target === name ? "selected" : ""} onClick={() => setTarget(name)}>{name}</button>)}</div>
-            <label>ATTACK</label>
-            <div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div>
-            <button className="ready-btn" onClick={() => setPhase("action")}><span>✓</span> LOCK ACTION</button>
-          </div>
+          <div className="role-card"><div className="role-icon">👑</div><div><span>ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong></div><div className="passive">PASSIVE</div></div>
+          {room.status === "lobby" ? (
+            <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once at least 2 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 2}>START MATCH</button></div>
+          ) : (
+            <>
+              <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={() => setPhase("action")} className="ability-btn" disabled={me?.is_ready}>USE ABILITY</button></div>
+              <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
+            </>
+          )}
         </aside>
       </section>
-
-      <footer className="bottom-bar"><div><span className="key">SPACE</span> CONFIRM</div><div><span className="key">ESC</span> MENU</div><div className="sync">● SERVER SYNC ACTIVE</div></footer>
+      <footer className="bottom-bar"><div><span className="key">ROOM</span> {room.code}</div><div><span className="key">PLAYERS</span> {players.length}/6</div><div className="sync">● REALTIME CONNECTED</div></footer>
     </main>
   );
 }
