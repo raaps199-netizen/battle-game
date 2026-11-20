@@ -93,7 +93,10 @@ export default function Home() {
     await supabase.from("rooms").update({ host_player_id: playerId }).eq("id", newRoom.id);
     if (playerError) { setError(playerError.message); setBusy(false); return; }
     await supabase.from("game_states").insert({ room_id: newRoom.id });
-    setRoom(newRoom); await loadPlayers(newRoom.id); await loadGameState(newRoom.id); setBusy(false);
+    await loadRoom(newRoom.id);
+    await loadPlayers(newRoom.id);
+    await loadGameState(newRoom.id);
+    setBusy(false);
   }
 
   async function joinRoom() {
@@ -104,6 +107,10 @@ export default function Home() {
     if (found.status !== "lobby") { setError("Room itu udah mulai."); setBusy(false); return; }
     const playerId = crypto.randomUUID();
     localStorage.setItem("battle_player_id", playerId);
+    const { count: playerCount, error: countError } = await supabase.from("players").select("id", { count: "exact", head: true }).eq("room_id", found.id);
+    if (countError) { setError("Gagal cek jumlah player: " + countError.message); setBusy(false); return; }
+    if ((playerCount ?? 0) >= 6) { setError("Room sudah penuh. Maksimal 6 player."); setBusy(false); return; }
+
     const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: found.id, name: name.trim() });
     if (playerError) { setError(playerError.message); setBusy(false); return; }
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
@@ -226,9 +233,9 @@ export default function Home() {
           <div className="arena">
             <div className="grid-floor" />
             <div className="crosshair c1" /><div className="crosshair c2" /><div className="crosshair c3" />
-            {players.slice(0,3).map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c"][i]}`}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{p.id===me?.id?"👑":"?"}</div><span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
+            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"}`}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{p.id===me?.id?"👑":"?"}</div><span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
           </div>
-          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? `Share code ${room.code} with 2–5 players.` : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
+          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? `Share code ${room.code} with up to 6 players.` : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
         </section>
 
         <aside className="side-panel right-panel">
