@@ -136,7 +136,7 @@ export default function Home() {
   }
 
   async function startGame() {
-    if (!room || !me || players.length < 3 || players.length > 6 || me.id !== room.host_player_id) return;
+    if (!room || !me || players.length < 2 || players.length > 6 || me.id !== room.host_player_id) return;
     const { error } = await supabase.functions.invoke("start-match", {
       body: { room_id: room.id, player_id: me.id }
     });
@@ -189,7 +189,7 @@ export default function Home() {
         <div className="join-row"><input value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} placeholder="ROOM CODE" maxLength={8} /><button onClick={joinRoom} disabled={busy}>JOIN</button></div>
         <button className="create-btn" onClick={createRoom} disabled={busy}>{busy ? "CONNECTING..." : "CREATE ROOM"}</button>
         {error && <div className="error-box">{error}</div>}
-        <div className="lobby-note">3–6 PLAYERS · FIRST TO 3 ROUNDS</div>
+        <div className="lobby-note">2–6 PLAYERS · FIRST TO 3 ROUNDS</div>
       </div>
     </main>
   );
@@ -240,8 +240,8 @@ export default function Home() {
               <div className="room-code-big">{room.code}</div>
               <button className="copy-btn" onClick={copyRoomCode}>COPY ROOM CODE</button>
               <strong>READY TO DEPLOY</strong>
-              <p>{players.length < 3 ? "Need at least 3 players." : "Share the code, then the host starts the match."}</p>
-              <button className="ability-btn" onClick={startGame} disabled={players.length < 3 || players.length > 6 || me?.id !== room.host_player_id}>START MATCH</button>
+              <p>{players.length < 2 ? "Need at least 2 players." : "Share the code, then the host starts the match."}</p>
+              <button className="ability-btn" onClick={startGame} disabled={players.length < 2 || players.length > 6 || me?.id !== room.host_player_id}>START MATCH</button>
             </div>
           ) : (
             <>
