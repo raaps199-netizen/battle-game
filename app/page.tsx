@@ -103,6 +103,11 @@ export default function Home() {
     }, { onConflict: "room_id,player_id,round" });
     await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
     setPhase("action");
+
+    const { error: resolveError } = await supabase.functions.invoke("resolve-round", {
+      body: { room_id: room.id }
+    });
+    if (resolveError) setError(resolveError.message);
   }
 
   if (!room) return (
