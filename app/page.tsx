@@ -34,6 +34,9 @@ export default function Home() {
   const [guessedRole, setGuessedRole] = useState("KING");
   const [useHollow, setUseHollow] = useState(false);
   const [useBoomerang, setUseBoomerang] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [roomEvent, setRoomEvent] = useState("Waiting for room activity...");
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
@@ -44,7 +47,19 @@ export default function Home() {
     if (!room) return;
     const channel = supabase
       .channel("room-" + room.id)
-      .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${room.id}` }, () => loadPlayers(room.id))
+      .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${room.id}` }, (payload) => {
+        loadPlayers(room.id);
+        const player = (payload.eventType === "DELETE" ? payload.old : payload.new) as Player;
+        if (payload.eventType === "INSERT") {
+          setRoomEvent(`${player.name} JOINED THE ROOM`);
+        } else if (payload.eventType === "DELETE") {
+          setRoomEvent(`${player.name} LEFT THE ROOM`);
+        } else if (payload.eventType === "UPDATE" && player.is_ready) {
+          setRoomEvent(`${player.name} IS READY`);
+          setNotice(`${player.name} is ready`);
+          setTimeout(() => setNotice(""), 1800);
+        }
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "rooms", filter: `id=eq.${room.id}` }, () => loadRoom(room.id))
       .on("postgres_changes", { event: "*", schema: "public", table: "game_states", filter: `room_id=eq.${room.id}` }, () => loadGameState(room.id))
       .subscribe();
@@ -142,8 +157,42 @@ export default function Home() {
     setAbilityBusy(false);
   }
 
+  async function setLobbyReady() {
+    if (!me || room?.status !== "lobby" || me.is_ready) return;
+    const { error } = await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
+    if (error) setError(error.message);
+  }
+
+  async function leaveRoom() {
+    if (!room || !me || leaving) return;
+    setLeaving(true);
+    const wasHost = me.id === room.host_player_id;
+    const remaining = players.filter(p => p.id !== me.id);
+    await supabase.from("players").delete().eq("id", me.id);
+    if (wasHost && remaining.length > 0) {
+      await supabase.from("rooms").update({ host_player_id: remaining[0].id }).eq("id", room.id);
+    }
+    localStorage.setItem("battle_player_id", crypto.randomUUID());
+    supabase.removeAllChannels();
+    setRoom(null);
+    setPlayers([]);
+    setMe(null);
+    setLeaving(false);
+  }
+
+  useEffect(() => {
+    if (!room) return;
+    const onExit = () => {
+      const id = localStorage.getItem("battle_player_id");
+      if (id) supabase.from("players").delete().eq("id", id);
+    };
+    window.addEventListener("pagehide", onExit);
+    return () => window.removeEventListener("pagehide", onExit);
+  }, [room?.id]);
+
   async function startGame() {
-    if (!room || !me || players.length < 2 || players.length > 6 || me.id !== room.host_player_id) return;
+    const readyCount = players.filter(p => p.is_ready).length;
+    if (!room || !me || players.length < 2 || players.length > 6 || me.id !== room.host_player_id || readyCount < 1) return;
     const { error } = await supabase.functions.invoke("start-match", {
       body: { room_id: room.id, player_id: me.id }
     });
@@ -235,7 +284,7 @@ export default function Home() {
             <div className="crosshair c1" /><div className="crosshair c2" /><div className="crosshair c3" />
             {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"}`}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{p.id===me?.id?"👑":"?"}</div><span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
           </div>
-          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? `Share code ${room.code} with up to 6 players.` : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
+          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? roomEvent : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
         </section>
 
         <aside className="side-panel right-panel">
@@ -247,8 +296,13 @@ export default function Home() {
               <div className="room-code-big">{room.code}</div>
               <button className="copy-btn" onClick={copyRoomCode}>COPY ROOM CODE</button>
               <strong>READY TO DEPLOY</strong>
-              <p>{players.length < 2 ? "Need at least 2 players." : "Share the code, then the host starts the match."}</p>
-              <button className="ability-btn" onClick={startGame} disabled={players.length < 2 || players.length > 6 || me?.id !== room.host_player_id}>START MATCH</button>
+              <p>{players.length < 2 ? "Need at least 2 players." : me?.is_ready ? "You're ready. Wait for the host." : "Press READY, then the host can start the match."}</p>
+              <div className="lobby-ready-row">
+                <button className={me?.is_ready ? "ready-btn ready-active" : "ready-btn"} onClick={setLobbyReady} disabled={me?.is_ready}>✓ {me?.is_ready ? "READY" : "READY UP"}</button>
+                <button className="leave-btn" onClick={leaveRoom} disabled={leaving}>{leaving ? "LEAVING..." : "LEAVE ROOM"}</button>
+              </div>
+              <div className="ready-summary">{players.filter(p => p.is_ready).length} / {players.length} READY</div>
+              <button className="ability-btn" onClick={startGame} disabled={players.length < 2 || players.length > 6 || me?.id !== room.host_player_id || players.filter(p => p.is_ready).length < 1}>START MATCH</button>
             </div>
           ) : (
             <>
@@ -297,6 +351,7 @@ export default function Home() {
           )}
         </aside>
       </section>
+      {notice && <div className="ready-popup">✓ {notice}</div>}
       <footer className="bottom-bar"><div><span className="key">ROOM</span> {room.code}</div><div><span className="key">PLAYERS</span> {players.length}/6</div><div className="sync">● REALTIME CONNECTED</div></footer>
     </main>
   );
