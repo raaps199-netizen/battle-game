@@ -323,14 +323,14 @@ export default function Home() {
 
         <section className="arena-panel">
           <div className="phase-banner">
-            <span className="phase-index">{phase === "ability" ? "PHASE 01" : phase === "action" ? "PHASE 02" : "PHASE 03"}</span>
-            <div><strong>{phase === "ability" ? "ABILITY PHASE" : phase === "action" ? "ACTION PHASE" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Use your ability or skip, then wait for everyone." : phase === "action" ? "Choose target, attack and shield, then lock." : phase === "resolution" ? "Server is resolving every action simultaneously." : "The match has a winner."}</span></div>
+            <span className="phase-index">{phase === "ability" ? "01" : phase === "action" ? "02" : "03"}</span>
+            <div><strong>{phase === "ability" ? "ABILITY" : phase === "action" ? "ACTION" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Use ability or skip." : phase === "action" ? "Choose an action, then click a player." : phase === "resolution" ? "Resolving..." : "Match complete."}</span></div>
             <div className="ready-count">{players.filter(p => p.is_ready).length} / {alive.length} READY</div>
           </div>
           <div className="arena">
             <div className="grid-floor" />
-            <div className="crosshair c1" /><div className="crosshair c2" /><div className="crosshair c3" />
-            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"} ${phase === "action" && attack !== "RELOAD" && !me?.is_ready && p.id !== me?.id ? "attackable" : ""}`} onClick={() => clickPlayer(p.id)}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{shotFx === p.id && <span className="hit-bullet">●</span>}{p.id===me?.id?"👑":"?"}</div>{p.id === me?.id && shield !== "NONE" && <div className="shield-visual">◇ {shield}</div>}<span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
+            
+            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"} ${phase === "action" && attack !== "RELOAD" && !me?.is_ready && p.id !== me?.id ? "attackable" : ""} ${p.id === target && !me?.is_ready ? "target-selected" : ""}`} onClick={() => clickPlayer(p.id)}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{shotFx === p.id && <span className="hit-bullet">●</span>}{p.id===me?.id?"👑":"?"}</div>{p.id === me?.id && shield !== "NONE" && <div className="shield-visual">◇ {shield}</div>}<span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
           </div>
           <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? roomEvent : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
         </section>
@@ -389,69 +389,70 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              <div className="action-dock">
-                <div className="action-status">
-                  <span>AMMO {me?.ammo ?? 0} / 4</span>
-                  <span>{me?.is_ready ? "ACTION LOCKED" : phase === "action" ? "CHOOSE ACTION" : "WAITING..."}</span>
-                </div>
-                <div className="action-buttons">
-                  <button className="dock-btn" onClick={() => { setAttack("RELOAD"); lockAction(); }} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) >= 4}>
-                    <span>↻</span> RELOAD
-                  </button>
-                  <button className="dock-btn shoot" onClick={() => setActionPopup("shoot")} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) < 1}>
-                    <span>●</span> SHOOT
-                  </button>
-                  <button className="dock-btn shield" onClick={() => setActionPopup("shield")} disabled={me?.is_ready || phase !== "action"}>
-                    <span>◇</span> SHIELD
-                  </button>
-                </div>
-              </div>
-
-              {actionPopup === "shoot" && !me?.is_ready && (
-                <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
-                  <div className="action-modal" onClick={e => e.stopPropagation()}>
-                    <div className="modal-kicker">SHOOT</div>
-                    <strong>SELECT AMMO TYPE</strong>
-                    <div className="shoot-options">
-                      {attacks.map(a => {
-                        const enough = (me?.ammo ?? 0) >= a.cost;
-                        return (
-                          <button key={a.name} className={enough ? "shoot-option available" : "shoot-option"} disabled={!enough} onClick={() => chooseAttack(a.name)}>
-                            <b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
-                  </div>
-                </div>
-              )}
-
-              {actionPopup === "shield" && !me?.is_ready && (
-                <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
-                  <div className="action-modal" onClick={e => e.stopPropagation()}>
-                    <div className="modal-kicker">DEFENSE</div>
-                    <strong>SELECT SHIELD</strong>
-                    <div className="shoot-options">
-                      {["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => (
-                        <button key={s} className={shield === s ? "shoot-option available selected" : "shoot-option available"} onClick={() => chooseShield(s)}>
-                          <b>{s === "NONE" ? "○" : "◇"}</b><span>{s === "NONE" ? "NO SHIELD" : s}</span><small>DEFENSE</small>
-                        </button>
-                      ))}
-                    </div>
-                    <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
-                  </div>
-                </div>
-              )}
-
-              <div className="selected-action">
-                {attack === "RELOAD" ? "↻ RELOAD" : "● " + attack}
-                {shield !== "NONE" && <span> · ◇ {shield} SHIELD</span>}
-                {attack !== "RELOAD" && <small> CLICK A PLAYER TO FIRE</small>}
-              </div>
-          )}
+   )}
         </aside>
       </section>
+      <div className="action-dock">
+        <div className="action-status">
+          <span>AMMO {me?.ammo ?? 0} / 4</span>
+          <span>{me?.is_ready ? "ACTION LOCKED" : phase === "action" ? "CHOOSE ACTION" : "WAITING..."}</span>
+        </div>
+        <div className="action-buttons">
+          <button className="dock-btn" onClick={() => { setAttack("RELOAD"); lockAction(); }} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) >= 4}>
+            <span>↻</span> RELOAD
+          </button>
+          <button className="dock-btn shoot" onClick={() => setActionPopup("shoot")} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) < 1}>
+            <span>●</span> SHOOT
+          </button>
+          <button className="dock-btn shield" onClick={() => setActionPopup("shield")} disabled={me?.is_ready || phase !== "action"}>
+            <span>◇</span> SHIELD
+          </button>
+        </div>
+      </div>
+
+      {actionPopup === "shoot" && !me?.is_ready && (
+        <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
+          <div className="action-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-kicker">SHOOT</div>
+            <strong>SELECT AMMO TYPE</strong>
+            <div className="shoot-options">
+              {attacks.map(a => {
+                const enough = (me?.ammo ?? 0) >= a.cost;
+                return (
+                  <button key={a.name} className={enough ? "shoot-option available" : "shoot-option"} disabled={!enough} onClick={() => chooseAttack(a.name)}>
+                    <b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small>
+                  </button>
+                );
+              })}
+            </div>
+            <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
+          </div>
+        </div>
+      )}
+
+      {actionPopup === "shield" && !me?.is_ready && (
+        <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
+          <div className="action-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-kicker">DEFENSE</div>
+            <strong>SELECT SHIELD</strong>
+            <div className="shoot-options">
+              {["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => (
+                <button key={s} className={shield === s ? "shoot-option available selected" : "shoot-option available"} onClick={() => chooseShield(s)}>
+                  <b>{s === "NONE" ? "○" : "◇"}</b><span>{s === "NONE" ? "NO SHIELD" : s}</span><small>DEFENSE</small>
+                </button>
+              ))}
+            </div>
+            <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
+          </div>
+        </div>
+      )}
+
+      <div className="selected-action">
+        {attack === "RELOAD" ? "↻ RELOAD" : "● " + attack}
+        {shield !== "NONE" && <span> · ◇ {shield} SHIELD</span>}
+        {attack !== "RELOAD" && <small> CLICK A PLAYER TO FIRE</small>}
+      </div>
+       
       {notice && <div className="ready-popup">✓ {notice}</div>}
       <footer className="bottom-bar"><div><span className="key">ROOM</span> {room.code}</div><div><span className="key">PLAYERS</span> {players.length}/6</div><div className="sync">● REALTIME CONNECTED</div></footer>
     </main>
