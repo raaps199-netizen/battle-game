@@ -389,7 +389,8 @@ export default function Home() {
                   )}
                 </div>
               </div>
-   )}
+              </>
+            )}
         </aside>
       </section>
       <div className="action-dock">
