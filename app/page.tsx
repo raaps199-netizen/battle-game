@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Room = { id: string; code: string; status: string; round: number; host_player_id: string | null };
-type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; item: string | null; round_wins: number; is_alive: boolean; is_ready: boolean; ability_used: boolean; ability_cooldown: number; item_uses: number };
+type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; item: string | null; inventory?: string[]; round_wins: number; is_alive: boolean; is_ready: boolean; ability_used: boolean; ability_cooldown: number; item_uses: number; clone_count?: number };
 
 const attacks = [
   { name: "SINGLE", cost: 1, icon: "•" },
@@ -25,13 +25,15 @@ export default function Home() {
   const [me, setMe] = useState<Player | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<"ability" | "action">("ability");
+  const [phase, setPhase] = useState<"ability" | "action" | "resolution" | "match_end">("ability");
   const [target, setTarget] = useState("");
   const [attack, setAttack] = useState("SINGLE");
   const [shield, setShield] = useState("NONE");
   const [abilityBusy, setAbilityBusy] = useState(false);
   const [abilityTarget, setAbilityTarget] = useState("");
   const [guessedRole, setGuessedRole] = useState("KING");
+  const [useHollow, setUseHollow] = useState(false);
+  const [useBoomerang, setUseBoomerang] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
@@ -56,7 +58,7 @@ export default function Home() {
 
   async function loadGameState(roomId: string) {
     const { data } = await supabase.from("game_states").select("phase").eq("room_id", roomId).single();
-    if (data?.phase === "ability" || data?.phase === "action") setPhase(data.phase);
+    if (data?.phase === "ability" || data?.phase === "action" || data?.phase === "resolution" || data?.phase === "match_end") setPhase(data.phase);
   }
 
   async function loadPlayers(roomId: string) {
@@ -65,6 +67,17 @@ export default function Home() {
       setPlayers(data);
       const myId = localStorage.getItem("battle_player_id");
       setMe(data.find((p: Player) => p.id === myId) ?? null);
+    }
+  }
+
+  async function copyRoomCode() {
+    if (!room?.code) return;
+    try {
+      await navigator.clipboard.writeText(room.code);
+      setError("Room code copied.");
+      setTimeout(() => setError(""), 1500);
+    } catch {
+      setError("Code: " + room.code);
     }
   }
 
@@ -132,15 +145,17 @@ export default function Home() {
   }
 
   async function lockAction() {
-    if (!room || !me || !target) return;
+    if (!room || !me || !target || phase !== "action") return;
     const chosen = attacks.find(a => a.name === attack)!;
+    if (useHollow && !(me.inventory ?? []).includes("HOLLOW_BULLET")) return setError("Lu nggak punya Hollow Bullet.");
+    if (useBoomerang && !(me.inventory ?? []).includes("BOOMERANG")) return setError("Lu nggak punya Boomerang.");
     setError("");
     const { error: actionError } = await supabase.from("actions").upsert({
       room_id: room.id,
       player_id: me.id,
       target_player_id: target,
       action_type: attack,
-      action_data: { ammo_cost: chosen.cost, shield },
+      action_data: { ammo_cost: chosen.cost, shield, hollow_bullet: useHollow, use_boomerang: useBoomerang },
       locked: true,
       round: room.round
     }, { onConflict: "room_id,player_id,round" });
@@ -166,7 +181,7 @@ export default function Home() {
       <div className="scanlines" />
       <div className="lobby-card">
         <div className="brand"><span className="brand-mark">◆</span><div><div className="brand-name">BATTLE<span>//</span>GAME</div><div className="brand-sub">TACTICAL LIVE COMBAT</div></div></div>
-        <div className="lobby-title">ENTER THE ROOM</div>
+        <div className="lobby-title">{room ? "ROOM LOBBY" : "ENTER THE ROOM"}</div>
         <p className="lobby-copy">Real-time tactical combat. Pilih room, masuk, lalu tembak-tembakan secara simultan. Karena ternyata manusia masih butuh website buat saling nembak.</p>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="PLAYER NAME" maxLength={20} />
         <div className="join-row"><input value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} placeholder="ROOM CODE" maxLength={8} /><button onClick={joinRoom} disabled={busy}>JOIN</button></div>
@@ -178,13 +193,14 @@ export default function Home() {
   );
 
   const alive = players.filter(p => p.is_alive);
+  const matchWinner = players.find(p => p.round_wins >= 3);
   return (
     <main className="game-shell">
       <div className="scanlines" />
       <header className="topbar">
         <div className="brand"><span className="brand-mark">◆</span><div><div className="brand-name">BATTLE<span>//</span>GAME</div><div className="brand-sub">TACTICAL LIVE COMBAT</div></div></div>
         <div className="round-box"><span>ROUND</span><strong>{String(room.round).padStart(2, "0")}</strong><small>/ MATCH</small></div>
-        <div className="status"><span className="live-dot" /> ONLINE <span className="room-code">ROOM: {room.code}</span></div>
+        <div className="status"><span className="live-dot" /> ONLINE <button className="room-code" onClick={copyRoomCode}>ROOM: {room.code} ⧉</button></div>
       </header>
 
       <section className="hud-grid">
@@ -201,8 +217,8 @@ export default function Home() {
 
         <section className="arena-panel">
           <div className="phase-banner">
-            <span className="phase-index">PHASE 0{phase === "ability" ? "1" : "2"}</span>
-            <div><strong>{phase === "ability" ? "ABILITY PHASE" : "ACTION PHASE"}</strong><span>{phase === "ability" ? "Use your ability before locking an action." : "Choose your target and attack."}</span></div>
+            <span className="phase-index">{phase === "ability" ? "PHASE 01" : phase === "action" ? "PHASE 02" : "PHASE 03"}</span>
+            <div><strong>{phase === "ability" ? "ABILITY PHASE" : phase === "action" ? "ACTION PHASE" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Use your ability or skip, then wait for everyone." : phase === "action" ? "Choose target, attack and shield, then lock." : phase === "resolution" ? "Server is resolving every action simultaneously." : "The match has a winner."}</span></div>
             <div className="ready-count">{players.filter(p => p.is_ready).length} / {alive.length} READY</div>
           </div>
           <div className="arena">
@@ -210,14 +226,21 @@ export default function Home() {
             <div className="crosshair c1" /><div className="crosshair c2" /><div className="crosshair c3" />
             {players.slice(0,3).map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c"][i]}`}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{p.id===me?.id?"👑":"?"}</div><span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
           </div>
-          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? "Waiting for host to start..." : "Server sync active. Actions resolve together."}</div>
+          <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? `Share code ${room.code} with 2–5 players.` : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
         </section>
 
         <aside className="side-panel right-panel">
           <div className="panel-title">YOUR LOADOUT</div>
-          <div className="role-card"><div className="role-icon">◆</div><div><span>ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong></div><div className="passive">ITEM: {me?.item ?? "NONE"}</div></div>
+          <div className="role-card"><div className="role-icon">◆</div><div><span>ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong></div><div className="passive">ITEMS: {(me?.inventory ?? [me?.item ?? "NONE"]).join(" · ")}</div></div>
           {room.status === "lobby" ? (
-            <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once 3–6 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 3 || me?.id !== room.host_player_id}>START MATCH</button></div>
+            <div className="ability-card">
+              <div className="card-top"><span>ROOM CODE</span><span>{players.length} / 6 PLAYERS</span></div>
+              <div className="room-code-big">{room.code}</div>
+              <button className="copy-btn" onClick={copyRoomCode}>COPY ROOM CODE</button>
+              <strong>READY TO DEPLOY</strong>
+              <p>{players.length < 3 ? "Need at least 3 players." : "Share the code, then the host starts the match."}</p>
+              <button className="ability-btn" onClick={startGame} disabled={players.length < 3 || players.length > 6 || me?.id !== room.host_player_id}>START MATCH</button>
+            </div>
           ) : (
             <>
               <div className="ability-card">
@@ -255,7 +278,12 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
+              <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div>
+              {phase !== "action" && <div className="phase-lock">{phase === "resolution" ? "RESOLVING..." : "WAITING FOR NEXT PHASE"}</div>}<label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><div className="item-actions">
+                <button className={useHollow ? "selected" : ""} onClick={() => setUseHollow(!useHollow)} disabled={!(me?.inventory ?? []).includes("HOLLOW_BULLET") || phase !== "action"}>HOLOW BULLET</button>
+                <button className={useBoomerang ? "selected" : ""} onClick={() => setUseBoomerang(!useBoomerang)} disabled={!(me?.inventory ?? []).includes("BOOMERANG") || phase !== "action"}>BOOMERANG</button>
+              </div>
+              <button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready || phase !== "action"}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : phase !== "action" ? "WAITING..." : "LOCK ACTION"}</button></div>
             </>
           )}
         </aside>
