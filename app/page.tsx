@@ -37,6 +37,8 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [roomEvent, setRoomEvent] = useState("Waiting for room activity...");
   const [leaving, setLeaving] = useState(false);
+  const [actionPopup, setActionPopup] = useState<"shoot" | "shield" | null>(null);
+  const [shotFx, setShotFx] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
@@ -219,18 +221,20 @@ export default function Home() {
     await loadGameState(room.id);
   }
 
-  async function lockAction() {
-    if (!room || !me || !target || phase !== "action") return;
-    const chosen = attacks.find(a => a.name === attack)!;
+  async function lockAction(nextTarget = target) {
+    if (!room || !me || phase !== "action") return;
+    if (attack !== "RELOAD" && !nextTarget) return;
+    const chosen = attacks.find(a => a.name === attack);
+    if (attack !== "RELOAD" && !chosen) return;
     if (useHollow && !(me.inventory ?? []).includes("HOLLOW_BULLET")) return setError("Lu nggak punya Hollow Bullet.");
     if (useBoomerang && !(me.inventory ?? []).includes("BOOMERANG")) return setError("Lu nggak punya Boomerang.");
     setError("");
     const { error: actionError } = await supabase.from("actions").upsert({
       room_id: room.id,
       player_id: me.id,
-      target_player_id: target,
+      target_player_id: attack === "RELOAD" ? null : nextTarget,
       action_type: attack,
-      action_data: { ammo_cost: chosen.cost, shield, hollow_bullet: useHollow, use_boomerang: useBoomerang },
+      action_data: { ammo_cost: chosen?.cost ?? 0, shield, hollow_bullet: useHollow, use_boomerang: useBoomerang },
       locked: true,
       round: room.round
     }, { onConflict: "room_id,player_id,round" });
@@ -238,6 +242,13 @@ export default function Home() {
       setError(actionError.message);
       return;
     }
+
+    if (nextTarget) {
+      setTarget(nextTarget);
+      setShotFx(nextTarget);
+      setTimeout(() => setShotFx(null), 650);
+    }
+    setActionPopup(null);
 
     const { error: readyError } = await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
     if (readyError) {
@@ -249,6 +260,26 @@ export default function Home() {
       body: { room_id: room.id }
     });
     if (resolveError) setError(resolveError.message);
+  }
+
+  function chooseAttack(name: string) {
+    setAttack(name);
+    setActionPopup(null);
+    setNotice("READY: " + name + ". Click a player profile to fire.");
+    setTimeout(() => setNotice(""), 1800);
+  }
+
+  function chooseShield(value: string) {
+    setShield(value);
+    setActionPopup(null);
+    setNotice(value === "NONE" ? "SHIELD OFF" : value + " SHIELD READY");
+    setTimeout(() => setNotice(""), 1400);
+  }
+
+  function clickPlayer(playerId: string) {
+    if (phase === "action" && !me?.is_ready && attack !== "RELOAD" && playerId !== me?.id) {
+      lockAction(playerId);
+    }
   }
 
   if (!room) return (
@@ -299,7 +330,7 @@ export default function Home() {
           <div className="arena">
             <div className="grid-floor" />
             <div className="crosshair c1" /><div className="crosshair c2" /><div className="crosshair c3" />
-            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"}`}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{p.id===me?.id?"👑":"?"}</div><span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
+            {players.map((p,i) => <div key={p.id} className={`player-node node-${["a","b","c","d","e","f"][i] ?? "a"} ${phase === "action" && attack !== "RELOAD" && !me?.is_ready && p.id !== me?.id ? "attackable" : ""}`} onClick={() => clickPlayer(p.id)}><div className={`node-ring ${p.id===me?.id?"pulse":""}`} /><div className={`node-core ${i===0?"cyan":i===1?"violet":"pink"}`}>{shotFx === p.id && <span className="hit-bullet">●</span>}{p.id===me?.id?"👑":"?"}</div>{p.id === me?.id && shield !== "NONE" && <div className="shield-visual">◇ {shield}</div>}<span>{p.id===me?.id?"YOU":p.name.toUpperCase()}</span><small>{p.hp} HP · {p.ammo} AMMO</small></div>)}
           </div>
           <div className="event-log"><span className="log-time">ROOM</span>{room.status === "lobby" ? roomEvent : phase === "match_end" ? `${matchWinner?.name ?? "Winner"} wins the match.` : phase === "resolution" ? "Resolving simultaneous actions..." : "Server sync active. Actions resolve together."}</div>
         </section>
@@ -358,13 +389,66 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div>
-              {phase !== "action" && <div className="phase-lock">{phase === "resolution" ? "RESOLVING..." : "WAITING FOR NEXT PHASE"}</div>}<label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><div className="item-actions">
-                <button className={useHollow ? "selected" : ""} onClick={() => setUseHollow(!useHollow)} disabled={!(me?.inventory ?? []).includes("HOLLOW_BULLET") || phase !== "action"}>HOLOW BULLET</button>
-                <button className={useBoomerang ? "selected" : ""} onClick={() => setUseBoomerang(!useBoomerang)} disabled={!(me?.inventory ?? []).includes("BOOMERANG") || phase !== "action"}>BOOMERANG</button>
+              <div className="action-dock">
+                <div className="action-status">
+                  <span>AMMO {me?.ammo ?? 0} / 4</span>
+                  <span>{me?.is_ready ? "ACTION LOCKED" : phase === "action" ? "CHOOSE ACTION" : "WAITING..."}</span>
+                </div>
+                <div className="action-buttons">
+                  <button className="dock-btn" onClick={() => { setAttack("RELOAD"); lockAction(); }} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) >= 4}>
+                    <span>↻</span> RELOAD
+                  </button>
+                  <button className="dock-btn shoot" onClick={() => setActionPopup("shoot")} disabled={me?.is_ready || phase !== "action" || (me?.ammo ?? 0) < 1}>
+                    <span>●</span> SHOOT
+                  </button>
+                  <button className="dock-btn shield" onClick={() => setActionPopup("shield")} disabled={me?.is_ready || phase !== "action"}>
+                    <span>◇</span> SHIELD
+                  </button>
+                </div>
               </div>
-              <button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready || phase !== "action"}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : phase !== "action" ? "WAITING..." : "LOCK ACTION"}</button></div>
-            </>
+
+              {actionPopup === "shoot" && !me?.is_ready && (
+                <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
+                  <div className="action-modal" onClick={e => e.stopPropagation()}>
+                    <div className="modal-kicker">SHOOT</div>
+                    <strong>SELECT AMMO TYPE</strong>
+                    <div className="shoot-options">
+                      {attacks.map(a => {
+                        const enough = (me?.ammo ?? 0) >= a.cost;
+                        return (
+                          <button key={a.name} className={enough ? "shoot-option available" : "shoot-option"} disabled={!enough} onClick={() => chooseAttack(a.name)}>
+                            <b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
+                  </div>
+                </div>
+              )}
+
+              {actionPopup === "shield" && !me?.is_ready && (
+                <div className="action-modal-backdrop" onClick={() => setActionPopup(null)}>
+                  <div className="action-modal" onClick={e => e.stopPropagation()}>
+                    <div className="modal-kicker">DEFENSE</div>
+                    <strong>SELECT SHIELD</strong>
+                    <div className="shoot-options">
+                      {["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => (
+                        <button key={s} className={shield === s ? "shoot-option available selected" : "shoot-option available"} onClick={() => chooseShield(s)}>
+                          <b>{s === "NONE" ? "○" : "◇"}</b><span>{s === "NONE" ? "NO SHIELD" : s}</span><small>DEFENSE</small>
+                        </button>
+                      ))}
+                    </div>
+                    <button className="modal-close" onClick={() => setActionPopup(null)}>CANCEL</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="selected-action">
+                {attack === "RELOAD" ? "↻ RELOAD" : "● " + attack}
+                {shield !== "NONE" && <span> · ◇ {shield} SHIELD</span>}
+                {attack !== "RELOAD" && <small> CLICK A PLAYER TO FIRE</small>}
+              </div>
           )}
         </aside>
       </section>
