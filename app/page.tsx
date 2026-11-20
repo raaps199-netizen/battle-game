@@ -28,6 +28,7 @@ export default function Home() {
   const [phase, setPhase] = useState<"ability" | "action">("ability");
   const [target, setTarget] = useState("");
   const [attack, setAttack] = useState("SINGLE");
+  const [shield, setShield] = useState("NONE");
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
@@ -97,7 +98,7 @@ export default function Home() {
       player_id: me.id,
       target_player_id: target,
       action_type: attack,
-      action_data: { ammo_cost: chosen.cost, shield: "NONE" },
+      action_data: { ammo_cost: chosen.cost, shield },
       locked: true,
       round: room.round
     }, { onConflict: "room_id,player_id,round" });
@@ -132,7 +133,7 @@ export default function Home() {
       <div className="scanlines" />
       <header className="topbar">
         <div className="brand"><span className="brand-mark">◆</span><div><div className="brand-name">BATTLE<span>//</span>GAME</div><div className="brand-sub">TACTICAL LIVE COMBAT</div></div></div>
-        <div className="round-box"><span>ROUND</span><strong>{String(room.round).padStart(2, "0")}</strong><small>/ 03</small></div>
+        <div className="round-box"><span>ROUND</span><strong>{String(room.round).padStart(2, "0")}</strong><small>/ MATCH</small></div>
         <div className="status"><span className="live-dot" /> ONLINE <span className="room-code">ROOM: {room.code}</span></div>
       </header>
 
@@ -170,7 +171,7 @@ export default function Home() {
           ) : (
             <>
               <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={() => setPhase("action")} className="ability-btn" disabled={me?.is_ready}>USE ABILITY</button></div>
-              <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
+              <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
             </>
           )}
         </aside>
