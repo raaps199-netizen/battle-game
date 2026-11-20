@@ -30,6 +30,8 @@ export default function Home() {
   const [attack, setAttack] = useState("SINGLE");
   const [shield, setShield] = useState("NONE");
   const [abilityBusy, setAbilityBusy] = useState(false);
+  const [abilityTarget, setAbilityTarget] = useState("");
+  const [guessedRole, setGuessedRole] = useState("KING");
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
@@ -92,13 +94,29 @@ export default function Home() {
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
   }
 
-  async function useAbility() {
+  async function useAbility(skip = false) {
     if (!room || !me || me.ability_used || me.ability_cooldown > 0 || abilityBusy) return;
+    if (!skip && (me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
+      setError("Pilih target ability dulu.");
+      return;
+    }
+
     setAbilityBusy(true);
-    const patch = me.role === "KING" ? { ammo: Math.min(4, me.ammo + 2), ability_used: true } : { ability_used: true };
-    const { error } = await supabase.from("players").update(patch).eq("id", me.id);
+    setError("");
+
+    const { error } = await supabase.functions.invoke("use-ability", {
+      body: {
+        room_id: room.id,
+        player_id: me.id,
+        target_player_id: abilityTarget || null,
+        guessed_role: me.role === "DETECTIVE" ? guessedRole : null,
+        skip
+      }
+    });
+
     if (error) setError(error.message);
-    await supabase.from("game_states").update({ phase: "action" }).eq("room_id", room.id);
+    else await loadGameState(room.id);
+
     setAbilityBusy(false);
   }
 
@@ -116,7 +134,8 @@ export default function Home() {
   async function lockAction() {
     if (!room || !me || !target) return;
     const chosen = attacks.find(a => a.name === attack)!;
-    await supabase.from("actions").upsert({
+    setError("");
+    const { error: actionError } = await supabase.from("actions").upsert({
       room_id: room.id,
       player_id: me.id,
       target_player_id: target,
@@ -125,7 +144,16 @@ export default function Home() {
       locked: true,
       round: room.round
     }, { onConflict: "room_id,player_id,round" });
-    await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
+    if (actionError) {
+      setError(actionError.message);
+      return;
+    }
+
+    const { error: readyError } = await supabase.from("players").update({ is_ready: true }).eq("id", me.id);
+    if (readyError) {
+      setError(readyError.message);
+      return;
+    }
     
     const { error: resolveError } = await supabase.functions.invoke("resolve-round", {
       body: { room_id: room.id }
@@ -165,7 +193,7 @@ export default function Home() {
           {players.map(p => (
             <div key={p.id} className={p.id === me?.id ? "player-card active" : "player-card"}>
               <div className={"avatar " + (p.id === me?.id ? "cyan" : "violet")}>{p.id === me?.id ? "👑" : "?"}</div>
-              <div className="player-info"><strong>{p.name.toUpperCase()}</strong><span>{p.role ?? "UNKNOWN"} · {p.round_wins} WIN</span><div className="hp-row">{Array.from({length: Math.max(3,p.max_hp)}, (_,i) => <i key={i} className={i < p.hp ? "hp on" : "hp"} />)}</div></div>
+              <div className="player-info"><strong>{p.name.toUpperCase()}</strong><span>{p.id === me?.id ? (p.role ?? "UNKNOWN") : "ROLE HIDDEN"} · {p.round_wins} WIN</span><div className="hp-row">{Array.from({length: Math.max(3,p.max_hp)}, (_,i) => <i key={i} className={i < p.hp ? "hp on" : "hp"} />)}</div></div>
               <div className="ammo">{p.ammo} <span>●</span></div>
             </div>
           ))}
@@ -192,7 +220,41 @@ export default function Home() {
             <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once 3–6 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 3 || me?.id !== room.host_player_id}>START MATCH</button></div>
           ) : (
             <>
-              <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={useAbility} className="ability-btn" disabled={me?.is_ready || me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy}>{me?.ability_used ? "ABILITY USED" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : "USE ABILITY"}</button></div>
+              <div className="ability-card">
+                <div className="card-top"><span>⚡ ABILITY</span><span className="available">{me?.ability_cooldown ? `CD ${me.ability_cooldown}` : me?.ability_used ? "USED" : "READY"}</span></div>
+                <strong>{me?.role ?? "UNKNOWN"}</strong>
+                <p>{
+                  me?.role === "KING" ? "Gain +2 ammo now, up to the ammo cap." :
+                  me?.role === "DETECTIVE" ? "Guess one player's role. A correct guess eliminates them this round." :
+                  me?.role === "GLITCH" ? "Become untargetable for this round." :
+                  me?.role === "WUKONG" ? "Double your clone count. Clones increase your resource strength." :
+                  me?.role === "NINJA" ? "Change your target before the round resolves." :
+                  me?.role === "HUNTER" ? "Passive ability. Successful hits restore 1 HP." :
+                  "No active ability."
+                }</p>
+                {(me?.role === "DETECTIVE" || me?.role === "NINJA") && (
+                  <div className="target-buttons">
+                    {players.filter(p => p.id !== me?.id && p.is_alive).map(p => (
+                      <button key={p.id} className={abilityTarget === p.id ? "selected" : ""} onClick={() => setAbilityTarget(p.id)}>
+                        {p.name.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {me?.role === "DETECTIVE" && (
+                  <select value={guessedRole} onChange={e => setGuessedRole(e.target.value)} className="role-select">
+                    {["KING","DETECTIVE","GLITCH","WUKONG","HUNTER","NINJA"].map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                )}
+                <div className="ability-actions">
+                  <button onClick={() => useAbility(false)} className="ability-btn" disabled={me?.is_ready || me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy || me?.role === "HUNTER"}>
+                    {me?.ability_used ? "ABILITY USED" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
+                  </button>
+                  {!me?.ability_used && !me?.is_ready && (
+                    <button onClick={() => useAbility(true)} className="skip-btn" disabled={abilityBusy}>SKIP</button>
+                  )}
+                </div>
+              </div>
               <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
             </>
           )}
