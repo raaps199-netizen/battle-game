@@ -58,3 +58,36 @@
 @keyframes bullet-hit{0%{opacity:0;transform:translate(-50%,-28px) scale(.5)}45%{opacity:1}100%{opacity:0;transform:translate(-50%,0) scale(1)}}
 @keyframes shield-pulse{0%,100%{opacity:.55}50%{opacity:1}}
 @media(max-width:620px){.action-buttons{gap:5px}.dock-btn{font-size:8px}.action-modal{padding:14px}}
+
+/* clean combat layout */
+.hud-grid{grid-template-columns:220px minmax(0,1fr) 270px;gap:12px;padding:12px}
+.side-panel,.arena-panel{background:rgba(8,11,17,.92)}
+.arena{min-height:500px;background:#080b11}
+.grid-floor{opacity:.3;background-size:55px 55px}
+.crosshair{display:none}
+.phase-banner{min-height:52px;padding:8px 12px}
+.phase-banner strong{font-size:12px}
+.phase-banner div span{font-size:8px}
+.player-node{transition:transform .15s ease,filter .15s ease}
+.player-node.attackable{cursor:pointer}
+.player-node.attackable:hover .node-core{transform:scale(1.04);box-shadow:0 0 20px rgba(85,231,255,.18)}
+.player-node.target-selected .node-core{border-color:var(--cyan);box-shadow:0 0 24px rgba(85,231,255,.28)}
+.action-dock{width:min(720px,calc(100vw - 28px));margin:8px auto 10px;padding:8px 10px;border:1px solid rgba(120,150,190,.22);background:rgba(5,8,13,.97);position:sticky;bottom:10px;z-index:10;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.action-status{margin-bottom:6px;font-size:7px}
+.action-status b{color:#fff}
+.action-buttons{gap:6px}
+.dock-btn{height:42px;min-height:42px;border:1px solid rgba(255,255,255,.12);background:#0b0f16;color:#aeb8c8;font-size:9px}
+.dock-btn.shoot{background:#0b151b;border-color:rgba(85,231,255,.45)}
+.dock-btn.shield{background:#0e0d17;border-color:rgba(169,140,255,.4)}
+.dock-btn:hover:not(:disabled){transform:translateY(-1px)}
+.selected-action{display:none}
+.action-modal-backdrop{background:rgba(0,0,0,.46)}
+.action-modal{width:min(360px,calc(100vw - 28px));padding:15px;background:#090d14;border-color:rgba(255,255,255,.14)}
+.action-modal>strong{font-size:14px;margin-bottom:10px}
+.shoot-options{gap:6px}
+.shoot-option{min-height:62px}
+.shoot-option.available b{color:#dfe8f5}
+.shoot-option.available:hover{box-shadow:none}
+.right-panel .action-dock,.right-panel .selected-action{display:none}
+@media(max-width:1000px){.hud-grid{grid-template-columns:1fr;padding:8px}.right-panel{display:grid;grid-template-columns:1fr 1fr;gap:8px}.left-panel{display:none}.arena{min-height:55vh}.action-dock{width:min(680px,calc(100vw - 20px))}}
+@media(max-width:620px){.topbar{height:58px}.hud-grid{padding:6px}.right-panel{display:block}.arena{min-height:420px}.phase-banner{padding:7px 9px}.phase-banner div span{display:none}.action-dock{width:calc(100vw - 14px);margin:6px auto 8px;padding:7px}.dock-btn{height:44px;font-size:8px}}
