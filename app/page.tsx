@@ -85,7 +85,8 @@ export default function Home() {
     if (!name.trim()) return setError("Isi nama lu dulu jir.");
     setBusy(true); setError("");
     const code = makeCode();
-    const playerId = localStorage.getItem("battle_player_id")!;
+    const playerId = crypto.randomUUID();
+    localStorage.setItem("battle_player_id", playerId);
     const { data: newRoom, error: roomError } = await supabase.from("rooms").insert({ code }).select().single();
     if (roomError || !newRoom) { setError(roomError?.message ?? "Gagal bikin room."); setBusy(false); return; }
     const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: newRoom.id, name: name.trim(), role: null });
@@ -101,7 +102,8 @@ export default function Home() {
     const { data: found, error: findError } = await supabase.from("rooms").select("*").eq("code", roomCode.trim().toUpperCase()).single();
     if (findError || !found) { setError("Room nggak ketemu."); setBusy(false); return; }
     if (found.status !== "lobby") { setError("Room itu udah mulai."); setBusy(false); return; }
-    const playerId = localStorage.getItem("battle_player_id")!;
+    const playerId = crypto.randomUUID();
+    localStorage.setItem("battle_player_id", playerId);
     const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: found.id, name: name.trim() });
     if (playerError) { setError(playerError.message); setBusy(false); return; }
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
