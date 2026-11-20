@@ -136,9 +136,9 @@ export default function Home() {
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
   }
 
-  async function useAbility(skip = false) {
+  async function useAbility() {
     if (!room || !me || me.ability_used || me.ability_cooldown > 0 || abilityBusy) return;
-    if (!skip && (me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
+    if ((me.role === "DETECTIVE" || me.role === "NINJA") && !abilityTarget) {
       setError("Pilih target ability dulu.");
       return;
     }
@@ -151,8 +151,7 @@ export default function Home() {
         room_id: room.id,
         player_id: me.id,
         target_player_id: abilityTarget || null,
-        guessed_role: me.role === "DETECTIVE" ? guessedRole : null,
-        skip
+        guessed_role: me.role === "DETECTIVE" ? guessedRole : null
       }
     });
 
@@ -349,7 +348,7 @@ export default function Home() {
         <section className="arena-panel">
           <div className="phase-banner">
             <span className="phase-index">{phase === "ability" ? "01" : phase === "action" ? "02" : "03"}</span>
-            <div><strong>{phase === "ability" ? "ABILITY" : phase === "action" ? "ACTION" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Use ability or skip." : phase === "action" ? "Choose an action, then click a player." : phase === "resolution" ? "Resolving..." : "Match complete."}</span></div>
+            <div><strong>{phase === "ability" ? "ABILITY" : phase === "action" ? "ACTION" : phase === "resolution" ? "RESOLVING" : "MATCH END"}</strong><span>{phase === "ability" ? "Choose your ability action." : phase === "action" ? "Choose an action, then click a player." : phase === "resolution" ? "Resolving..." : "Match complete."}</span></div>
             <div className="ready-count">{players.filter(p => p.is_ready).length} / {alive.length} READY</div>
           </div>
           <div className="arena">
@@ -407,10 +406,14 @@ export default function Home() {
                 )}
                 <div className="ability-actions">
                   <button onClick={() => useAbility(false)} className="ability-btn" disabled={me?.is_ready || me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy || me?.role === "HUNTER"}>
-                    {me?.ability_used ? "ABILITY USED" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
+                    {me?.ability_used ? "ABILITY DONE" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : me?.role === "HUNTER" ? "PASSIVE" : "USE ABILITY"}
                   </button>
-                  {!me?.ability_used && !me?.is_ready && (
-                    <button onClick={() => useAbility(true)} className="skip-btn" disabled={abilityBusy}>SKIP</button>
+                  {!me?.ability_used && !me?.is_ready && me?.role !== "HUNTER" && (me?.ability_cooldown ?? 0) === 0 && (
+                    <button onClick={() => {
+                      setNotice("ABILITY DECLINED · CONTINUING TO ACTION");
+                      setTimeout(() => setNotice(""), 1400);
+                      supabase.from("players").update({ ability_used: true }).eq("id", me.id);
+                    }} className="skip-btn" disabled={abilityBusy}>NO ABILITY</button>
                   )}
                 </div>
               </div>
