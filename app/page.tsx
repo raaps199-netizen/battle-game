@@ -401,8 +401,7 @@ export default function Home() {
             <div className="ability-card phase-center"><div className="modal-kicker">RESOLUTION</div><strong>PROCESSING ROUND</strong><p>Semua action sedang di-resolve secara simultan.</p></div>
           ) : (
             <div className="ability-card phase-center"><div className="modal-kicker">MATCH END</div><strong>{matchWinner?.name ?? "WINNER"} WINS</strong><p>First to 3 round wins.</p></div>
-          )
-            )}
+          )}
         </aside>
       </section>
       {phase === "action" && <div className="action-dock">
