@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Room = { id: string; code: string; status: string; round: number };
-type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; round_wins: number; is_alive: boolean; is_ready: boolean };
+type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; item: string | null; round_wins: number; is_alive: boolean; is_ready: boolean; ability_used: boolean; ability_cooldown: number; item_uses: number };
 
 const attacks = [
   { name: "SINGLE", cost: 1, icon: "•" },
@@ -29,6 +29,7 @@ export default function Home() {
   const [target, setTarget] = useState("");
   const [attack, setAttack] = useState("SINGLE");
   const [shield, setShield] = useState("NONE");
+  const [abilityBusy, setAbilityBusy] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
@@ -69,10 +70,11 @@ export default function Home() {
     if (!name.trim()) return setError("Isi nama lu dulu jir.");
     setBusy(true); setError("");
     const code = makeCode();
+    const playerId = localStorage.getItem("battle_player_id")!;
     const { data: newRoom, error: roomError } = await supabase.from("rooms").insert({ code }).select().single();
     if (roomError || !newRoom) { setError(roomError?.message ?? "Gagal bikin room."); setBusy(false); return; }
-    const playerId = localStorage.getItem("battle_player_id")!;
-    const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: newRoom.id, name: name.trim(), role: "KING" });
+    const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: newRoom.id, name: name.trim(), role: null });
+    await supabase.from("rooms").update({ host_player_id: playerId }).eq("id", newRoom.id);
     if (playerError) { setError(playerError.message); setBusy(false); return; }
     await supabase.from("game_states").insert({ room_id: newRoom.id });
     setRoom(newRoom); await loadPlayers(newRoom.id); await loadGameState(newRoom.id); setBusy(false);
@@ -88,6 +90,16 @@ export default function Home() {
     const { error: playerError } = await supabase.from("players").insert({ id: playerId, room_id: found.id, name: name.trim() });
     if (playerError) { setError(playerError.message); setBusy(false); return; }
     setRoom(found); await loadPlayers(found.id); await loadGameState(found.id); setBusy(false);
+  }
+
+  async function useAbility() {
+    if (!room || !me || me.ability_used || me.ability_cooldown > 0 || abilityBusy) return;
+    setAbilityBusy(true);
+    const patch = me.role === "KING" ? { ammo: Math.min(4, me.ammo + 2), ability_used: true } : { ability_used: true };
+    const { error } = await supabase.from("players").update(patch).eq("id", me.id);
+    if (error) setError(error.message);
+    await supabase.from("game_states").update({ phase: "action" }).eq("room_id", room.id);
+    setAbilityBusy(false);
   }
 
   async function startGame() {
@@ -171,12 +183,12 @@ export default function Home() {
 
         <aside className="side-panel right-panel">
           <div className="panel-title">YOUR LOADOUT</div>
-          <div className="role-card"><div className="role-icon">👑</div><div><span>ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong></div><div className="passive">PASSIVE</div></div>
+          <div className="role-card"><div className="role-icon">◆</div><div><span>ROLE</span><strong>{me?.role ?? "UNKNOWN"}</strong></div><div className="passive">PASSIVE</div></div>
           {room.status === "lobby" ? (
             <div className="ability-card"><div className="card-top"><span>ROOM</span><span>{players.length} / 6</span></div><strong>READY TO DEPLOY</strong><p>Host can start once at least 2 players are inside.</p><button className="ability-btn" onClick={startGame} disabled={players.length < 2}>START MATCH</button></div>
           ) : (
             <>
-              <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={() => supabase.from("game_states").update({ phase: "action" }).eq("room_id", room.id)} className="ability-btn" disabled={me?.is_ready}>USE ABILITY</button></div>
+              <div className="ability-card"><div className="card-top"><span>⚡ ABILITY</span><span className="available">READY</span></div><strong>ROYAL RELOAD</strong><p>Reload gives +2 ammo instead of +1.</p><button onClick={useAbility} className="ability-btn" disabled={me?.is_ready || me?.ability_used || (me?.ability_cooldown ?? 0) > 0 || abilityBusy}>{me?.ability_used ? "ABILITY USED" : me?.ability_cooldown ? `COOLDOWN ${me.ability_cooldown}` : "USE ABILITY"}</button></div>
               <div className="action-card"><div className="card-top"><span>ACTION</span><span>AMMO {me?.ammo ?? 0} / 4</span></div><label>TARGET</label><div className="target-buttons">{players.filter(p => p.id !== me?.id && p.is_alive).map(p => <button key={p.id} className={target === p.id ? "selected" : ""} onClick={() => setTarget(p.id)}>{p.name.toUpperCase()}</button>)}</div><label>SHIELD</label><div className="target-buttons shield-buttons">{["NONE", "SINGLE", "DOUBLE", "BURST", "BAZOOKA"].map(s => <button key={s} className={shield === s ? "selected" : ""} onClick={() => setShield(s)}>{s === "NONE" ? "NO SHIELD" : s + " SHIELD"}</button>)}</div><label>ATTACK</label><div className="attack-grid">{attacks.map(a => <button key={a.name} className={attack === a.name ? "selected" : ""} onClick={() => setAttack(a.name)} disabled={(me?.ammo ?? 0) < a.cost}><b>{a.icon}</b><span>{a.name}</span><small>{a.cost} BULLET</small></button>)}</div><button className="ready-btn" onClick={lockAction} disabled={!target || me?.is_ready}><span>✓</span> {me?.is_ready ? "ACTION LOCKED" : "LOCK ACTION"}</button></div>
             </>
           )}
