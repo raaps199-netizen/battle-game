@@ -51,7 +51,10 @@ export default function Home() {
         loadPlayers(room.id);
         const player = (payload.eventType === "DELETE" ? payload.old : payload.new) as Player;
         if (payload.eventType === "INSERT") {
-          setRoomEvent(`${player.name} JOINED THE ROOM`);
+          const msg = `${player.name} JOINED THE ROOM`;
+          setRoomEvent(msg);
+          setNotice(msg);
+          setTimeout(() => setNotice(""), 1800);
         } else if (payload.eventType === "DELETE") {
           setRoomEvent(`${player.name} LEFT THE ROOM`);
         } else if (payload.eventType === "UPDATE" && player.is_ready) {
@@ -191,10 +194,24 @@ export default function Home() {
   }, [room?.id]);
 
   async function startGame() {
-    const readyCount = players.filter(p => p.is_ready).length;
-    if (!room || !me || players.length < 2 || players.length > 6 || me.id !== room.host_player_id || readyCount < 1) return;
+    if (!room || !me) return;
+    const { data: freshRoom, error: roomCheckError } = await supabase.from("rooms").select("*").eq("id", room.id).single();
+    const { data: freshPlayers, error: playersCheckError } = await supabase.from("players").select("*").eq("room_id", room.id).order("created_at");
+    if (roomCheckError || playersCheckError || !freshRoom || !freshPlayers) {
+      setError("Gagal cek room sebelum start.");
+      return;
+    }
+    const freshMe = freshPlayers.find((p: Player) => p.id === me.id);
+    const readyCount = freshPlayers.filter((p: Player) => p.is_ready).length;
+    if (freshMe?.id !== freshRoom.host_player_id || freshPlayers.length < 2 || freshPlayers.length > 6 || readyCount < 1) {
+      setError("Host harus start dan minimal 1 player harus READY.");
+      return;
+    }
+    setRoom(freshRoom);
+    setPlayers(freshPlayers);
+    setMe(freshMe ?? null);
     const { error } = await supabase.functions.invoke("start-match", {
-      body: { room_id: room.id, player_id: me.id }
+      body: { room_id: freshRoom.id, player_id: freshMe.id }
     });
     if (error) { setError(error.message); return; }
     await loadRoom(room.id);
