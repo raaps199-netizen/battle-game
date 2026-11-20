@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Room = { id: string; code: string; status: string; round: number };
-type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; item: string | null; round_wins: number; is_alive: boolean; is_ready: boolean; ability_used: boolean; ability_cooldown: number; item_uses: number };\n
+type Player = { id: string; room_id: string; name: string; hp: number; max_hp: number; ammo: number; role: string | null; item: string | null; round_wins: number; is_alive: boolean; is_ready: boolean; ability_used: boolean; ability_cooldown: number; item_uses: number };
+
 
 const attacks = [
   { name: "SINGLE", cost: 1, icon: "•" },
@@ -29,7 +30,9 @@ export default function Home() {
   const [target, setTarget] = useState("");
   const [attack, setAttack] = useState("SINGLE");
   const [shield, setShield] = useState("NONE");
-  const [abilityBusy, setAbilityBusy] = useState(false);\n  const [abilityTarget, setAbilityTarget] = useState("");\n  const [guessedRole, setGuessedRole] = useState("KING");
+  const [abilityBusy, setAbilityBusy] = useState(false);
+  const [abilityTarget, setAbilityTarget] = useState("");
+  const [guessedRole, setGuessedRole] = useState("KING");
 
   useEffect(() => {
     const saved = localStorage.getItem("battle_player_id");
