@@ -26,3 +26,35 @@
 .role-select { width: 100%; margin: 8px 0; padding: 9px; background: #10151b; color: #fff; border: 1px solid rgba(255,255,255,.15); }
 
 .lobby-ready-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 7px}.ready-btn.ready-active{border-color:rgba(109,255,177,.75);background:rgba(109,255,177,.14);color:var(--green)}.leave-btn{padding:9px;border:1px solid rgba(255,112,187,.35);background:rgba(255,112,187,.05);color:var(--pink);cursor:pointer;font-weight:700;letter-spacing:1px}.ready-summary{text-align:center;margin:6px 0 10px;color:var(--muted);font-family:monospace;font-size:8px;letter-spacing:1px}.ready-popup{position:fixed;top:86px;left:50%;transform:translateX(-50%);z-index:30;padding:10px 18px;border:1px solid rgba(109,255,177,.5);background:rgba(8,18,14,.94);color:var(--green);font-family:monospace;font-size:9px;letter-spacing:1px;box-shadow:0 0 28px rgba(109,255,177,.12)}
+
+.action-dock{position:relative;margin:10px 12px 12px;padding:10px;border:1px solid var(--line);background:rgba(4,8,14,.9)}
+.action-status{display:flex;justify-content:space-between;color:var(--muted);font-family:monospace;font-size:7px;letter-spacing:1px;margin-bottom:8px}
+.action-buttons{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+.dock-btn{min-height:42px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.035);color:#b8c2d2;cursor:pointer;font-weight:800;letter-spacing:1px}
+.dock-btn span{font-size:15px;margin-right:5px}
+.dock-btn.shoot{border-color:rgba(85,231,255,.55);color:var(--cyan);background:rgba(85,231,255,.08)}
+.dock-btn.shield{border-color:rgba(169,140,255,.45);color:var(--violet)}
+.dock-btn:hover{background:rgba(255,255,255,.08)}
+.selected-action{text-align:center;padding:7px 4px;color:var(--muted);font-family:monospace;font-size:7px;letter-spacing:1px}
+.selected-action span{color:var(--violet)}
+.selected-action small{display:block;margin-top:4px;color:var(--cyan);font-size:6px}
+.action-modal-backdrop{position:fixed;inset:0;z-index:25;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.52);backdrop-filter:blur(5px)}
+.action-modal{width:min(420px,92vw);padding:18px;border:1px solid rgba(85,231,255,.35);background:rgba(7,11,18,.97);box-shadow:0 25px 90px rgba(0,0,0,.65)}
+.modal-kicker{font-family:monospace;color:var(--cyan);font-size:7px;letter-spacing:2px;margin-bottom:5px}
+.action-modal>strong{display:block;font-size:16px;letter-spacing:2px;margin-bottom:14px}
+.shoot-options{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.shoot-option{min-height:72px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.018);color:#4f5968;display:grid;place-items:center;gap:2px;cursor:not-allowed}
+.shoot-option.available{border-color:rgba(85,231,255,.38);background:rgba(85,231,255,.055);color:#b8c2d2;cursor:pointer}
+.shoot-option.available:hover,.shoot-option.available.selected{border-color:var(--cyan);color:var(--cyan);background:rgba(85,231,255,.11);box-shadow:0 0 18px rgba(85,231,255,.08)}
+.shoot-option b{font-size:15px;color:#59616d}
+.shoot-option.available b{color:#ffb84d}
+.shoot-option span{font-size:9px;font-weight:800;letter-spacing:1px}
+.shoot-option small{font-family:monospace;color:var(--muted);font-size:6px}
+.modal-close{width:100%;margin-top:10px;padding:8px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#7f8998;cursor:pointer;font-family:monospace;font-size:7px;letter-spacing:1px}
+.player-node.attackable{cursor:crosshair}
+.player-node.attackable:hover .node-core{border-color:var(--cyan);box-shadow:0 0 24px rgba(85,231,255,.25);transform:scale(1.06)}
+.hit-bullet{position:absolute;z-index:4;color:#fff;font-size:14px;left:50%;top:0;transform:translate(-50%,-8px);animation:bullet-hit .65s ease-out}
+.shield-visual{position:absolute;left:50%;top:-10px;transform:translateX(-50%);color:var(--violet);font-family:monospace;font-size:7px;letter-spacing:1px;white-space:nowrap;text-shadow:0 0 12px rgba(169,140,255,.8);animation:shield-pulse 1.2s infinite}
+@keyframes bullet-hit{0%{opacity:0;transform:translate(-50%,-28px) scale(.5)}45%{opacity:1}100%{opacity:0;transform:translate(-50%,0) scale(1)}}
+@keyframes shield-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+@media(max-width:620px){.action-buttons{gap:5px}.dock-btn{font-size:8px}.action-modal{padding:14px}}
