@@ -52,38 +52,29 @@ export default function Home(){
 
  async function create(){
   if(!name.trim())return setError("Nama dulu jir.");
-  setBusy(true);setError("");const id=crypto.randomUUID();localStorage.setItem("werewolf_player_id",id);
-  const {data:r,error:e}=await supabase.from("rooms").insert({code:code()}).select().single();
-  if(e||!r){setError(e?.message??"Gagal bikin room.");setBusy(false);return}
-  const {error:pe}=await supabase.from("players").insert({id,room_id:r.id,name:name.trim(),is_alive:true});
-  if(pe){setError(pe.message);setBusy(false);return}
-  await supabase.from("rooms").update({host_player_id:id}).eq("id",r.id);
-  await supabase.from("game_states").insert({room_id:r.id,phase:"lobby"});
-  setMyId(id);setRoom(r);await load(r.id);setBusy(false);
+  setBusy(true);setError("");
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"create",name:name.trim()}});
+  if(e||!data){setError(e?.message??"Gagal bikin room.");setBusy(false);return}
+  localStorage.setItem("werewolf_player_id",data.player_id);localStorage.setItem("werewolf_session",data.session_token);
+  setMyId(data.player_id);setRoom(data.room);await load(data.room.id);if(data.room.status==="active")await fetchRole(data.player_id);setBusy(false);
  }
  async function join(){
   if(!name.trim()||!roomCode.trim())return setError("Nama sama kode room isi dulu.");
   setBusy(true);setError("");
-  const {data:r,error:e}=await supabase.from("rooms").select("id,code,status,round,host_player_id").eq("code",roomCode.trim().toUpperCase()).single();
-  if(e||!r)return(setError("Room nggak ketemu."),setBusy(false));
-  if(r.status!=="lobby")return(setError("Game udah mulai."),setBusy(false));
-  const {count}=await supabase.from("players").select("id",{count:"exact",head:true}).eq("room_id",r.id);
-  if((count??0)>=20)return(setError("Room penuh. Maksimal 20 pemain."),setBusy(false));
-  const id=crypto.randomUUID();localStorage.setItem("werewolf_player_id",id);
-  const {error:pe}=await supabase.from("players").insert({id,room_id:r.id,name:name.trim(),is_alive:true});
-  if(pe){setError(pe.message);setBusy(false);return}
-  setMyId(id);setRoom(r);await load(r.id);setBusy(false);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"join",name:name.trim(),code:roomCode.trim().toUpperCase()}});
+  if(e||!data){setError(e?.message??"Gagal join room.");setBusy(false);return}
+  localStorage.setItem("werewolf_player_id",data.player_id);localStorage.setItem("werewolf_session",data.session_token);
+  setMyId(data.player_id);setRoom(data.room);await load(data.room.id);setBusy(false);
  }
  async function start(){
   if(!room||room.host_player_id!==myId)return;
-  setBusy(true);const {error:e}=await supabase.functions.invoke("start-werewolf",{body:{room_id:room.id,player_id:myId}});
+  setBusy(true);const {error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"start",room_id:room.id,player_id:myId,session_token:localStorage.getItem("werewolf_session")}});
   if(e)setError(e.message);else{setNotice("ROLE DIACAK · GAME DIMULAI");await load(room.id);await fetchRole(myId)}
   setBusy(false);
  }
  async function fetchRole(id:string){
-  const token=localStorage.getItem("werewolf_session");
-  if(!token)return;
-  const {data,error:e}=await supabase.functions.invoke("get-werewolf-role",{body:{player_id:id,session_token:token}});
+  const token=localStorage.getItem("werewolf_session");if(!token)return;
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"role",player_id:id,session_token:token}});
   if(!e&&data?.role)setMyRole(data.role);
  }
  async function send(){
