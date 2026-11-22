@@ -97,7 +97,7 @@ export default function Home(){
    <input value={name} onChange={e=>setName(e.target.value)} placeholder="NAMA PEMAIN" maxLength={20}/>
    <div className="join-row"><input value={roomCode} onChange={e=>setRoomCode(e.target.value.toUpperCase())} placeholder="KODE ROOM" maxLength={8}/><button onClick={join} disabled={busy}>JOIN</button></div>
    <button className="primary" onClick={create} disabled={busy}>{busy?"CONNECTING...":"CREATE ROOM"}</button>
-   {error&&<div className="error">{error}</div>}<div className="tiny">6–20 PLAYERS · WEREWOLF / SEER / DOCTOR / HUNTER / VILLAGER</div>
+   {error&&<div className="error">{error}</div>}<div className="tiny">3–20 PLAYERS · WEREWOLF / SEER / DOCTOR / HUNTER / VILLAGER</div>
  </div></main>;
 
  return <main className="game"><header className="top"><div className="brand">WEREWOLF<span>//</span>ONLINE</div><div className="room">ROOM <b>{room.code}</b></div><div className="phase">{phase.toUpperCase()} · ROUND {room.round}</div></header>
@@ -106,7 +106,7 @@ export default function Home(){
    {players.map(p=><div className={"player "+(p.id===myId?"me":"")} key={p.id}><div className="avatar">{p.id===myId?"YOU":"?"}</div><div className="player-name">{p.name}<small>{p.is_alive?"ALIVE":"DEAD"}</small></div></div>)}
    {phase==="lobby"&&<button className="leave" onClick={leave}>LEAVE ROOM</button>}
   </aside>
-  <section className="center">{phase==="lobby"?<div className="lobby-main"><div className="eyebrow">LOBBY · {players.length}/20</div><h2>WAITING FOR THE VILLAGE</h2><p className="muted">Minimal 6 pemain. Host memulai game dan server akan mengacak role.</p><div className="code-box">{room.code}</div><div className="lobby-actions"><button className="secondary" onClick={()=>navigator.clipboard.writeText(room.code)}>COPY CODE</button><button className="primary" onClick={start} disabled={room.host_player_id!==myId||players.length<6||busy}>START GAME</button></div></div>
+  <section className="center">{phase==="lobby"?<div className="lobby-main"><div className="eyebrow">LOBBY · {players.length}/20</div><h2>WAITING FOR THE VILLAGE</h2><p className="muted">Minimal 3 pemain. Host memulai game dan server akan mengacak role.</p><div className="code-box">{room.code}</div><div className="lobby-actions"><button className="secondary" onClick={()=>navigator.clipboard.writeText(room.code)}>COPY CODE</button><button className="primary" onClick={start} disabled={room.host_player_id!==myId||players.length<3||busy}>START GAME</button></div></div>
    :<div className="board"><div className="moon">☾</div><div className="eyebrow">{phase==="night"?"THE VILLAGE IS ASLEEP":phase==="day"?"THE VILLAGE WAKES":"SOMEONE MUST ANSWER"}</div><h2>{phase.toUpperCase()} {room.round}</h2>
     {role&&<div className="role-reveal"><div className="role-icon">{role.icon}</div><div><span>YOUR ROLE</span><strong>{role.name}</strong><p>{role.desc}</p></div></div>}
     <div className="day-card"><strong>{phase==="night"?"NIGHT ACTIONS":phase==="day"?"DISCUSSION":"VOTING"}</strong><p>Fondasi game sudah aktif. Fase malam, resolusi, voting dan win-condition akan kita sambungkan setelah lobby + role assignment ini.</p></div>
