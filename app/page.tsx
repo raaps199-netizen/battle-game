@@ -47,7 +47,8 @@ export default function Home(){
     .on("postgres_changes",{event:"*",schema:"public",table:"game_states",filter:"room_id=eq."+room.id},()=>load(room.id))
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"room_id=eq."+room.id},()=>loadChat(room.id))
     .subscribe();
-   return()=>{supabase.removeChannel(c)}
+   const poll=setInterval(()=>load(room.id),1200);
+   return()=>{clearInterval(poll);supabase.removeChannel(c)}
  },[room?.id]);
 
  useEffect(()=>{if(room?.status==="active"&&myId&&!myRole)fetchRole(myId)},[room?.status,myId,myRole]);
