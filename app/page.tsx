@@ -50,6 +50,8 @@ export default function Home(){
    return()=>{supabase.removeChannel(c)}
  },[room?.id]);
 
+ useEffect(()=>{if(room?.status==="active"&&myId&&!myRole)fetchRole(myId)},[room?.status,myId,myRole]);
+
  async function create(){
   if(!name.trim())return setError("Nama dulu jir.");
   setBusy(true);setError("");
