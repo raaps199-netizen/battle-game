@@ -73,7 +73,7 @@ export default function Home(){
  async function start(){
   if(!room||room.host_player_id!==myId)return;
   setBusy(true);const {error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"start",room_id:room.id,player_id:myId,session_token:localStorage.getItem("werewolf_session")}});
-  if(e)setError(e.message);else{setNotice("ROLE DIACAK · GAME DIMULAI");await load(room.id);await fetchRole(myId)}
+  if(e){\n    let detail=e.message;\n    try{ const response=(e as any).context; if(response){ const body=await response.json(); if(body?.error) detail=body.error; }}catch{}\n    setError(detail);\n  }else{setNotice("ROLE DIACAK · GAME DIMULAI");await load(room.id);await fetchRole(myId)}
   setBusy(false);
  }
  async function fetchRole(id:string){
