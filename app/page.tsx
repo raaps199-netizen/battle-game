@@ -28,13 +28,16 @@ export default function Home(){
  useEffect(()=>{let id=localStorage.getItem("werewolf_player_id");if(!id){id=crypto.randomUUID();localStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
 
  async function load(id:string){
-   const [{data:r},{data:p},{data:g}]=await Promise.all([
-    supabase.from("rooms").select("id,code,status,round,host_player_id").eq("id",id).single(),
-    supabase.from("players").select("id,name,is_alive,created_at").eq("room_id",id).order("created_at"),
-    supabase.from("game_states").select("phase").eq("room_id",id).single()
-   ]);
-   if(r)setRoom(r); if(p)setPlayers(p);
-   if(g&&["lobby","night","day","voting","game_over"].includes(g.phase))setPhase(g.phase);
+   const playerId=localStorage.getItem("werewolf_player_id");
+   const sessionToken=localStorage.getItem("werewolf_session");
+   if(!playerId||!sessionToken)return;
+   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
+    action:"snapshot",room_id:id,player_id:playerId,session_token:sessionToken
+   }});
+   if(e||!data){setError(e?.message??"Gagal memuat room.");return}
+   if(data.room)setRoom(data.room);
+   if(Array.isArray(data.players))setPlayers(data.players);
+   if(["lobby","night","day","voting","game_over"].includes(data.phase))setPhase(data.phase);
  }
  async function loadChat(id:string){
    const {data}=await supabase.from("chat_messages").select("id,body,player_id,created_at").eq("room_id",id).eq("channel","general").order("created_at",{ascending:true}).limit(100);
@@ -42,13 +45,11 @@ export default function Home(){
  }
  useEffect(()=>{if(!room?.id)return;load(room.id);loadChat(room.id);
    const c=supabase.channel("ww-"+room.id)
-    .on("postgres_changes",{event:"*",schema:"public",table:"players",filter:"room_id=eq."+room.id},()=>load(room.id))
-    .on("postgres_changes",{event:"*",schema:"public",table:"rooms",filter:"id=eq."+room.id},()=>load(room.id))
-    .on("postgres_changes",{event:"*",schema:"public",table:"game_states",filter:"room_id=eq."+room.id},()=>load(room.id))
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"room_id=eq."+room.id},()=>loadChat(room.id))
     .subscribe();
-   const poll=setInterval(()=>{load(room.id);loadChat(room.id)},1500);
-   return()=>{clearInterval(poll);supabase.removeChannel(c)}
+   const poll=setInterval(()=>load(room.id),1500);
+   const chatPoll=setInterval(()=>loadChat(room.id),5000);
+   return()=>{clearInterval(poll);clearInterval(chatPoll);supabase.removeChannel(c)}
  },[room?.id]);
 
  useEffect(()=>{if(room?.status==="active"&&myId&&!myRole)fetchRole(myId)},[room?.status,myId,myRole]);
@@ -83,18 +84,24 @@ export default function Home(){
  async function send(){
   if(!room||!myId||!message.trim())return;
   const body=message.trim();
-  const {data,error:e}=await supabase.from("chat_messages")
-   .insert({room_id:room.id,player_id:myId,channel:"general",body,day:room.round})
-   .select("id,body,player_id,created_at").single();
-  if(e){setError(e.message);return}
-  if(data)setMessages(prev=>prev.some(m=>m.id===data.id)?prev:[...prev,data].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime()).slice(-100));
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
+   action:"chat_send",player_id:myId,session_token:localStorage.getItem("werewolf_session"),message:body,channel:"general"
+  }});
+  if(e||!data?.message){setError(e?.message??data?.error??"Pesan gagal dikirim.");return}
+  const saved=data.message;
+  setMessages(prev=>prev.some(m=>m.id===saved.id)?prev:[...prev,saved].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime()).slice(-100));
   setMessage("");
  }
  async function leave(){
   if(!room||!myId)return;
-  await supabase.from("players").delete().eq("id",myId);
+  setBusy(true);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
+   action:"leave",player_id:myId,session_token:localStorage.getItem("werewolf_session")
+  }});
+  if(e||!data?.left){setError(e?.message??data?.error??"Gagal keluar dari room.");setBusy(false);return}
   localStorage.removeItem("werewolf_player_id");localStorage.removeItem("werewolf_session");
-  setRoom(null);setPlayers([]);setMyRole(null);setPhase("lobby");
+  setRoom(null);setPlayers([]);setMyRole(null);setPhase("lobby");setMessages([]);
+  setBusy(false);
  }
 
  if(!room)return <main className="landing"><div className="landing-card">
