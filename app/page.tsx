@@ -73,7 +73,23 @@ export default function Home(){
  async function start(){
   if(!room||room.host_player_id!==myId)return;
   setBusy(true);const {error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"start",room_id:room.id,player_id:myId,session_token:localStorage.getItem("werewolf_session")}});
-  if(e){\n    let detail=e.message;\n    try{ const response=(e as any).context; if(response){ const body=await response.json(); if(body?.error) detail=body.error; }}catch{}\n    setError(detail);\n  }else{setNotice("ROLE DIACAK · GAME DIMULAI");await load(room.id);await fetchRole(myId)}
+  if (e) {
+    let detail = e.message;
+    try {
+      const response = (e as unknown as { context?: Response }).context;
+      if (response) {
+        const body = await response.clone().json();
+        if (typeof body?.error === "string") detail = body.error;
+      }
+    } catch {
+      // Keep the original SDK error when no JSON response is available.
+    }
+    setError(detail);
+  } else {
+    setNotice("ROLE DIACAK · GAME DIMULAI");
+    await load(room.id);
+    await fetchRole(myId);
+  }
   setBusy(false);
  }
  async function fetchRole(id:string){
