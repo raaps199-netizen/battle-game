@@ -190,7 +190,7 @@ export default function Home(){
       {myRole==="SEER"&&<p>Pilih satu pemain hidup untuk diperiksa. Hasilnya hanya terlihat oleh kamu saat siang.</p>}
       {myRole==="DOCTOR"&&<p>Pilih satu pemain hidup untuk dilindungi. Kamu boleh melindungi diri sendiri, tetapi tidak boleh memilih target yang sama dua malam berturut-turut.</p>}
       {myRole==="VILLAGER"&&<p>Kamu tidak punya aksi malam. Tunggu sampai desa bangun.</p>}
-      {myRole==="HUNTER"&&<p>Kamu tidak punya aksi malam. Kemampuan Hunter diproses pada fase kematian berikutnya.</p>}
+      {myRole==="HUNTER"&&<p>Kamu tidak punya aksi malam. Skill Hunter belum aktif di milestone ini.</p>}
       {canActAtNight&&<div className="target-grid">{nightTargets.map(p=><button key={p.id} className={"target-choice "+(selectedTarget===p.id?"selected":"")} onClick={()=>setSelectedTarget(p.id)}>{p.name}{p.id===myId?" · YOU":""}</button>)}</div>}
       {canActAtNight&&<button className="primary action-submit" onClick={nightAction} disabled={busy||!selectedTarget}>{myNightAction?"UPDATE ACTION":"SUBMIT ACTION"}</button>}
       <div className="action-progress">{myNightAction?"✓ Aksimu sudah tersimpan.":canActAtNight?"Pilih target lalu kirim aksi.":"Menunggu pemain dengan aksi malam."} <b>{nightProgress?.submitted??0}/{nightProgress?.required??0} ACTIONS SUBMITTED</b></div>
