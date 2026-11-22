@@ -47,7 +47,7 @@ export default function Home(){
     .on("postgres_changes",{event:"*",schema:"public",table:"game_states",filter:"room_id=eq."+room.id},()=>load(room.id))
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"room_id=eq."+room.id},()=>loadChat(room.id))
     .subscribe();
-   const poll=setInterval(()=>load(room.id),1200);
+   const poll=setInterval(()=>{load(room.id);loadChat(room.id)},1500);
    return()=>{clearInterval(poll);supabase.removeChannel(c)}
  },[room?.id]);
 
@@ -82,8 +82,13 @@ export default function Home(){
  }
  async function send(){
   if(!room||!myId||!message.trim())return;
-  const {error:e}=await supabase.from("chat_messages").insert({room_id:room.id,player_id:myId,channel:"general",body:message.trim(),day:room.round});
-  if(e)setError(e.message);else setMessage("");
+  const body=message.trim();
+  const {data,error:e}=await supabase.from("chat_messages")
+   .insert({room_id:room.id,player_id:myId,channel:"general",body,day:room.round})
+   .select("id,body,player_id,created_at").single();
+  if(e){setError(e.message);return}
+  if(data)setMessages(prev=>prev.some(m=>m.id===data.id)?prev:[...prev,data].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime()).slice(-100));
+  setMessage("");
  }
  async function leave(){
   if(!room||!myId)return;
