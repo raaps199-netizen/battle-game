@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BATTLE//GAME",
-  description: "Tactical multiplayer shooting game"
+  title: "GOHOFog · Game Hub",
+  description: "Play multiplayer games with friends. Start with Werewolf."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
