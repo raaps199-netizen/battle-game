@@ -257,3 +257,21 @@
 @keyframes announcementRise{from{opacity:0;transform:translateY(28px) scale(.97);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
 @keyframes announcementBreath{0%,100%{transform:scale(.97);opacity:.7}50%{transform:scale(1.03);opacity:1}}
 @media(max-width:620px){.morning-intro-card{padding:25px 16px}.morning-ribbon{font-size:6px;letter-spacing:.8px}.announcement-overlay{padding:14px}.announcement-card{padding:26px 17px;border-radius:18px}.announcement-emblem{width:62px;height:62px;font-size:30px;margin-bottom:13px}.announcement-kicker{font-size:6px;letter-spacing:1.5px}.announcement-card h2{font-size:25px;letter-spacing:1.5px}.announcement-subtitle{font-size:11px}.announcement-summary{padding:14px}.announcement-stats{gap:6px}.announcement-stats div{padding:10px 5px}.announcement-stats strong{font-size:19px}.announcement-stats span{font-size:5px;letter-spacing:.7px}.announcement-continue{font-size:7px;letter-spacing:.9px;padding:13px 8px}}
+
+
+/* FIRST LIGHT OPENING SCREEN */
+.dawn-opening{position:fixed;inset:0;z-index:70;display:grid;place-items:center;overflow:hidden;padding:24px;background:radial-gradient(ellipse at 50% 16%,#fff9df 0%,#f2e4bd 43%,#c6b890 100%);animation:announcementFade .55s ease}
+.dawn-opening:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.28),transparent 46%,rgba(117,97,55,.08)),radial-gradient(circle at 13% 80%,rgba(226,175,90,.22),transparent 24%),radial-gradient(circle at 88% 18%,rgba(255,255,255,.52),transparent 22%);pointer-events:none}
+.dawn-opening-halo{position:absolute;width:min(78vw,760px);aspect-ratio:1;border:1px solid rgba(173,132,57,.18);border-radius:50%;box-shadow:0 0 0 36px rgba(255,255,255,.08),0 0 0 82px rgba(166,132,70,.045),0 0 110px rgba(255,224,151,.34);animation:announcementBreath 8s ease-in-out infinite}
+.dawn-opening-content{position:relative;width:min(710px,100%);padding:clamp(26px,5vw,55px);text-align:center;border:1px solid rgba(151,117,55,.2);border-radius:26px;background:linear-gradient(145deg,rgba(255,253,240,.66),rgba(255,248,222,.34));box-shadow:0 35px 100px rgba(105,82,38,.12);backdrop-filter:blur(12px);animation:announcementRise .75s cubic-bezier(.16,1,.3,1)}
+.dawn-opening-kicker{color:#8b784f;font-size:8px;font-weight:900;letter-spacing:2.8px}
+.dawn-opening-sun{width:104px;height:104px;display:grid;place-items:center;margin:25px auto 17px;border-radius:50%;border:1px solid rgba(193,149,63,.26);background:radial-gradient(circle,rgba(255,215,130,.5),rgba(255,255,255,.18) 66%,transparent 72%);color:#c08a2e;font-size:67px;line-height:1;text-shadow:0 0 35px rgba(229,177,77,.55);animation:moonFloat 5s ease-in-out infinite}
+.dawn-opening-label{color:#a07b3e;font-size:8px;font-weight:900;letter-spacing:3px}
+.dawn-opening-content h1{margin:14px 0 13px;color:#403721;font-size:clamp(28px,5vw,48px);line-height:1.1;letter-spacing:3px;text-shadow:0 2px rgba(255,255,255,.7)}
+.dawn-opening-content p{max-width:520px;margin:0 auto;color:#77694d;font-size:13px;line-height:1.85}
+.dawn-opening-rule{display:flex;align-items:center;justify-content:center;gap:13px;margin:25px 0;color:#997a46;font-size:8px;font-weight:900;letter-spacing:1.5px}
+.dawn-opening-rule i{display:block;width:35px;height:1px;background:linear-gradient(90deg,transparent,#bd9654,transparent)}
+.dawn-opening-button{width:min(420px,100%);display:flex;align-items:center;justify-content:center;gap:14px;margin:0 auto;padding:15px 18px;border:1px solid #ae853d;border-radius:9px;background:linear-gradient(135deg,#d2a64f,#9b732e);box-shadow:0 12px 30px rgba(140,103,39,.2);color:#fffdf4;font-size:9px;font-weight:900;letter-spacing:1.6px;transition:transform .2s,box-shadow .2s}
+.dawn-opening-button:hover{transform:translateY(-2px);box-shadow:0 16px 38px rgba(140,103,39,.3)}
+.dawn-opening-button span{font-size:17px}
+@media(max-width:620px){.dawn-opening{padding:14px}.dawn-opening-content{padding:28px 17px;border-radius:20px}.dawn-opening-kicker{font-size:6px;letter-spacing:1.5px}.dawn-opening-sun{width:83px;height:83px;font-size:52px;margin:21px auto 14px}.dawn-opening-content h1{font-size:27px;letter-spacing:1.4px}.dawn-opening-content p{font-size:11px}.dawn-opening-rule{font-size:6px;gap:8px;letter-spacing:.8px}}
