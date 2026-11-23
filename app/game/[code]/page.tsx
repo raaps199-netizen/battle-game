@@ -191,6 +191,19 @@ export default function GameRoom(){
   await loadChat(room.id);
   setBusy(false);
  }
+ async function playAgain(){
+  if(!room||!myId||room.host_player_id!==myId)return;
+  setBusy(true);setError("");
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
+   action:"rematch",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")
+  }});
+  if(e||!data?.rematched){
+   let detail=data?.error??e?.message??"Gagal membuka lobby lagi.";
+   try{const response=(e as unknown as {context?:Response})?.context;if(response){const body=await response.clone().json();if(typeof body?.error==="string")detail=body.error}}catch{}
+   setError(detail);setBusy(false);return;
+  }
+  window.location.href="/lobby/"+room.code;
+ }
  async function send(){
   if(!room||!myId||!message.trim())return;
   const body=message.trim();
@@ -367,7 +380,9 @@ export default function GameRoom(){
      <div><strong>{room.round}</strong><span>ROUND</span></div>
     </div>
     {announcement.type==="game_over" && <div className="announcement-winner">{announcement.title==="THE WOLVES PREVAIL"?"WEREWOLF VICTORY":"VILLAGER VICTORY"}</div>}
-    <button className="announcement-continue" onClick={()=>setAnnouncement(null)}>CONTINUE TO THE VILLAGE <span>→</span></button>
+    {announcement.type==="game_over" && room.host_player_id===myId
+     ? <button className="announcement-continue" onClick={playAgain} disabled={busy}>{busy?"RETURNING TO LOBBY...":"PLAY AGAIN · SAME LOBBY"} <span>↻</span></button>
+     : <button className="announcement-continue" onClick={()=>setAnnouncement(null)}>{announcement.type==="game_over"?"CLOSE REPORT · WAIT FOR HOST":"CONTINUE TO THE VILLAGE"} <span>→</span></button>}
    </div>
   </div>}
   {notice && <div className="toast">✓ {notice}</div>}{error && <div className="toast error-toast">{error}</div>}
