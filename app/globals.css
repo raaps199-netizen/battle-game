@@ -117,3 +117,16 @@
  .game-top{height:54px;padding:0 11px}.game-top .brand{font-size:11px;letter-spacing:1px}.game-top-right{gap:8px}.phase-pill{font-size:6px;letter-spacing:.8px}.alive-pill{font-size:6px;gap:4px}.gameplay-shell{padding:8px 7px 12px}.scene-heading{padding:4px 6px}.scene-kicker{font-size:6px;letter-spacing:1.5px}.scene-subtitle{font-size:6px;letter-spacing:.8px}.arena{height:510px;min-height:510px;margin:0 -3px}.arena:before{inset:15% 3%}.ring-outer{width:94%;height:76%}.ring-inner{width:78%;height:62%}.village-core{width:48%;min-width:0;padding:10px 3px}.core-moon{font-size:34px;margin-bottom:8px}.core-kicker{font-size:6px;letter-spacing:1.5px}.village-core h1{font-size:12px;letter-spacing:1px;margin:7px 0}.village-core p{font-size:6px;letter-spacing:.6px}.core-fire{width:35px;height:35px;margin-top:9px}.player-seat{width:66px;min-height:86px;gap:2px}.avatar-halo{width:43px;height:43px;padding:3px}.player-avatar{font-size:15px}.alive-dot{width:8px;height:8px}.seat-name{max-width:68px;font-size:7px}.seat-status{font-size:5px;letter-spacing:.8px}.speech-bubble{max-width:135px;padding:6px 7px;font-size:7px;bottom:calc(100% + 6px)}.speech-bubble b{font-size:5px}.game-dock{grid-template-columns:1fr;gap:7px;padding:0 3px}.role-chip{padding:9px 11px}.role-chip-desc{max-width:none;font-size:7px}.phase-console{padding:11px;min-height:0}.game-chat{grid-column:auto;min-height:58px;padding:9px 10px}.chat-compose input{padding:10px}.scene-footer{padding:10px 5px 0;gap:9px;font-size:5px}.scene-footer button{font-size:5px;padding:6px}.intro-card{max-height:90vh;overflow:auto}
 }
 @media(prefers-reduced-motion:reduce){.game-room *, .game-room *:before,.game-room *:after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
+
+
+/* NIGHT REPORT: cinematic daybreak announcement */
+.night-report-card{border-color:rgba(142,154,255,.24);box-shadow:0 45px 140px rgba(0,0,0,.68),0 0 90px rgba(112,125,255,.16)}
+.night-report-card .intro-mark{color:#dce3ff;text-shadow:0 0 42px rgba(155,174,255,.9),0 0 85px rgba(108,126,255,.38)}
+.night-report-card .intro-line{box-shadow:0 0 20px rgba(132,145,255,.8)}
+.night-report-card h2{letter-spacing:6px}
+.night-report-card>p{max-width:520px}
+.night-report-card .intro-rules div{border-color:rgba(145,158,220,.12);background:rgba(126,139,190,.035)}
+.night-report-card .intro-rules div:hover{border-color:rgba(145,158,255,.32)}
+.night-report-card .intro-rules b{color:#9daaff}
+.night-report-card .intro-role{border-color:rgba(142,156,255,.28);background:linear-gradient(135deg,rgba(124,139,255,.1),rgba(255,255,255,.025))}
+.night-report-card .intro-role strong{letter-spacing:1px}
