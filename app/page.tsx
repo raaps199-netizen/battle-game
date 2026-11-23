@@ -232,7 +232,20 @@ export default function Home(){
    {(phase==="lobby"||phase==="day"||phase==="voting")?<div className="chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan..." maxLength={500}/><button onClick={send}>SEND</button></div>:<div className="chat-closed">Village chat ditutup selama malam.</div>}
   </aside>
  </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>{room.host_player_id===myId?"HOST":"PLAYER"} · REALTIME CONNECTED</span></footer>
- {showIntro&&<div className="intro-overlay"><div className={`intro-card ${myRole?.toLowerCase()??""}`}><div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">☾</div><div className="intro-line"></div><div className="eyebrow">WEREWOLF // ONLINE</div><h2>THE NIGHT BEGINS</h2><p>Desa sudah tertidur. Di antara kalian ada Werewolf yang sedang mencari korban.</p><div className="intro-rules"><div><b>01</b><span>Jaga identitasmu tetap rahasia.</span></div><div><b>02</b><span>Gunakan kemampuanmu saat malam.</span></div><div><b>03</b><span>Saat siang, diskusikan siapa yang mencurigakan.</span></div></div><div className="intro-role"><span>YOUR SECRET ROLE</span><strong>{role?.icon} {role?.name??"..."}</strong><small>{role?.desc??"Role sedang disiapkan oleh server."}</small></div><button className="primary intro-button" onClick={()=>setShowIntro(false)}>ENTER THE NIGHT</button></div></div>}
- {notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
+ {showIntro&&<div className="intro-overlay"><div className={"intro-card "+(myRole?.toLowerCase()??"")}>
+  <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon||"☾"}</div><div className="intro-line"></div>
+  <div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
+  <h2>{role?.name?.toUpperCase()||"YOUR ROLE"}</h2>
+  <p>{myRole==="WEREWOLF"?"Kamu bagian dari tim Werewolf. Berpura-puralah sebagai warga, koordinasikan korban, dan jangan sampai identitas timmu terbongkar.":myRole==="SEER"?"Kamu adalah mata desa. Setiap malam kamu dapat memeriksa satu pemain dan mengetahui role aslinya.":myRole==="DOCTOR"?"Kamu adalah pelindung desa. Setiap malam lindungi satu pemain dari serangan Werewolf.":myRole==="HUNTER"?"Kamu adalah Hunter. Kalau kamu mati, kamu mendapat satu kesempatan terakhir untuk menembak pemain hidup.":"Kamu adalah Villager. Tidak punya aksi malam, jadi kekuatanmu ada di pengamatan, diskusi, dan voting."}</p>
+  <div className="intro-rules">
+    <div><b>ROLE</b><span>{role?.desc}</span></div>
+    <div><b>YOUR GOAL</b><span>{myRole==="WEREWOLF"?"Buat jumlah Werewolf setidaknya sama dengan warga yang tersisa.":"Temukan dan singkirkan semua Werewolf sebelum mereka menguasai desa."}</span></div>
+    <div><b>YOUR ACTION</b><span>{myRole==="WEREWOLF"?"Pilih korban bersama timmu.":myRole==="SEER"?"Pilih satu pemain untuk diperiksa.":myRole==="DOCTOR"?"Pilih satu pemain untuk dilindungi.":myRole==="HUNTER"?"Jika mati, pilih satu target untuk ditembak.":"Tidak ada aksi malam. Gunakan diskusi dan voting."}</span></div>
+  </div>
+  {myRole==="WEREWOLF"&&<div className="intro-role"><span>YOUR PACK</span><strong>{allies.length?allies.map(a=>a.name).join(" · "):"YOU STAND ALONE"}</strong><small>Jangan pernah membocorkan daftar ini ke desa.</small></div>}
+  <div className="intro-role"><span>GAME FLOW</span><strong>🌙 NIGHT → ☀️ DAY → ⚖️ VOTE</strong><small>Malam untuk kemampuan rahasia. Siang untuk diskusi. Voting menentukan siapa yang tersingkir. Jika Hunter mati, dia mendapat fase khusus.</small></div>
+  <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTAND · ENTER NIGHT</button>
+</div></div>}
+{notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
  </main>
 }
