@@ -730,7 +730,19 @@ Deno.serve(async (req: Request) => {
         if (winner === "WEREWOLVES") summary += " Tim Werewolf menang!";
         if (winner === "VILLAGERS") summary += " Tim Villager menang!";
 
-        const nextPhase = winner ? "game_over" : "day";
+        const hunterPending = !!victimId && roleById.get(victimId) === "HUNTER";
+        if (hunterPending) {
+          const { error: pendingError } = await db.from("actions").insert({
+            room_id: player.room_id,
+            player_id: victimId,
+            action_type: "HUNTER_PENDING",
+            round: room.round,
+            action_data: { return_phase: "day" },
+          });
+          if (pendingError) throw pendingError;
+        }
+
+        const nextPhase = hunterPending ? "hunter" : winner ? "game_over" : "day";
         const { data: updatedState, error: stateUpdateError } = await db.from("game_states")
           .update({
             phase: nextPhase,
@@ -745,7 +757,7 @@ Deno.serve(async (req: Request) => {
         if (stateUpdateError) throw stateUpdateError;
         if (!updatedState) throw new Error("Night resolution lost its lock");
 
-        if (winner) {
+        if (winner && !hunterPending) {
           const { error: finishError } = await db.from("rooms")
             .update({ status: "finished" })
             .eq("id", player.room_id)
@@ -753,7 +765,7 @@ Deno.serve(async (req: Request) => {
           if (finishError) throw finishError;
         }
 
-        return json({ resolved: true, summary, winner, phase: nextPhase });
+        return json({ resolved: true, summary, winner: hunterPending ? null : winner, hunter: hunterPending, phase: nextPhase });
       } catch (error) {
         await db.from("game_states")
           .update({ phase: "night", updated_at: new Date().toISOString() })
