@@ -31,7 +31,7 @@ export default function Home(){
  const canActAtNight=["WEREWOLF","SEER","DOCTOR"].includes(myRole??"");
  const nightTargets=alive.filter(p=>myRole==="DOCTOR"||(p.id!==myId&&!allies.some(a=>a.id===p.id)));
 
- useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
+ useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){const legacyId=localStorage.getItem("werewolf_player_id");const legacyToken=localStorage.getItem("werewolf_session");if(legacyId&&legacyToken){id=legacyId;sessionStorage.setItem("werewolf_player_id",id);sessionStorage.setItem("werewolf_session",legacyToken)}}if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
 
  async function load(id:string){
    const playerId=sessionStorage.getItem("werewolf_player_id");
