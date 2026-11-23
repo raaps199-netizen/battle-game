@@ -177,51 +177,133 @@ export default function GameRoom(){
   setBusy(false);
  }
 
- return <main className="game"><header className="top"><div className="brand">WEREWOLF<span>//</span>ONLINE</div><div className="room">ROOM <b>{room.code}</b></div><div className="phase">{phase.toUpperCase()} · ROUND {room.round}</div></header>
- <section className="layout">
-  <aside className="panel players"><div className="panel-head">PLAYERS <span>{alive.length}/{players.length} ALIVE</span></div>
-   {players.map((p,i)=><div className={"player "+(p.id===myId?"me":"")} key={p.id}><div className="avatar">{i+1}</div><div className="player-name">{p.name}<small>{p.id===myId?"YOU · "+(p.is_alive?"READY":"DEAD"):(p.is_alive?"ALIVE":"DEAD")}</small></div></div>)}
-   {phase==="lobby"&&<button className="leave" onClick={leave}>LEAVE ROOM</button>}
-  </aside>
-  <section className="center">{phase==="lobby"?<div className="lobby-main"><div className="eyebrow">LOBBY · {players.length}/20</div><h2>WAITING FOR THE VILLAGE</h2><p className="muted">Minimal 3 pemain. Host memulai game dan server akan mengacak role.</p><div className="code-box">{room.code}</div><div className="lobby-actions"><button className="secondary" onClick={()=>navigator.clipboard.writeText(room.code)}>COPY CODE</button><button className="primary" onClick={start} disabled={room.host_player_id!==myId||players.length<3||busy}>START GAME</button></div></div>
-   :<div className="board"><div className="moon">☾</div><div className="eyebrow">{phase==="night"?"THE VILLAGE IS ASLEEP":phase==="day"?"THE VILLAGE WAKES":"SOMEONE MUST ANSWER"}</div><h2>{phase.toUpperCase()} {room.round}</h2>
-    {role&&<div className="role-reveal"><div className="role-icon">{role.icon}</div><div><span>YOUR ROLE</span><strong>{role.name}</strong><p>{role.desc}</p></div></div>}
-    {phase==="night"&&<div className="day-card night-card">
-      <strong>NIGHT ACTIONS</strong>
-      {myRole==="WEREWOLF"&&<p>Tim serigala: pilih pemain hidup di luar timmu. {allies.length?("Rekanmu: "+allies.map(a=>a.name).join(", ")): "Kamu satu-satunya serigala."}</p>}
-      {myRole==="SEER"&&<p>Pilih satu pemain hidup untuk diperiksa. Hasilnya hanya terlihat oleh kamu saat siang.</p>}
-      {myRole==="DOCTOR"&&<p>Pilih satu pemain hidup untuk dilindungi. Kamu boleh melindungi diri sendiri, tetapi tidak boleh memilih target yang sama dua malam berturut-turut.</p>}
-      {myRole==="VILLAGER"&&<p>Kamu tidak punya aksi malam. Tunggu sampai desa bangun.</p>}
-      {myRole==="HUNTER"&&<p>Kamu tidak punya aksi malam. Skill Hunter belum aktif di milestone ini.</p>}
-      {canActAtNight&&<div className="target-grid">{nightTargets.map(p=><button key={p.id} className={"target-choice "+(selectedTarget===p.id?"selected":"")} onClick={()=>setSelectedTarget(p.id)}>{p.name}{p.id===myId?" · YOU":""}</button>)}</div>}
-      {canActAtNight&&<button className="primary action-submit" onClick={nightAction} disabled={busy||!selectedTarget}>{myNightAction?"UPDATE ACTION":"SUBMIT ACTION"}</button>}
-      <div className="action-progress">{myNightAction?"✓ Aksimu sudah tersimpan.":canActAtNight?"Pilih target lalu kirim aksi.":"Menunggu pemain dengan aksi malam."} <b>{nightProgress?.submitted??0}/{nightProgress?.required??0} ACTIONS SUBMITTED</b></div>
-      {room.host_player_id===myId&&<div className="host-resolve"><button className="primary resolve-button" onClick={resolveNight} disabled={busy}>RESOLVE NIGHT</button><small>{nightProgress?`${nightProgress.submitted}/${nightProgress.required} aksi wajib terkirim`:"Menunggu status aksi..."}</small></div>}
-    </div>}
-    {phase==="resolution"&&<div className="day-card"><strong>RESOLVING NIGHT</strong><p>Server sedang menghitung pilihan, perlindungan, korban, dan kondisi menang.</p></div>}
-    {phase==="day"&&<div className="day-card"><strong>☀️ THE VILLAGE WAKES</strong><p>{lastNightSummary||"Malam telah selesai."}</p>{seerResult&&<div className="seer-result">🔮 HASIL RAHASIA: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name??seerResult.role}</b>. Hanya kamu yang melihat ini.</div>}<p className="day-hint">💬 Diskusi terbuka. Bongkar alibi, cari kontradiksi, lalu voting.</p>{room.host_player_id===myId&&<button className="primary" onClick={startVoting} disabled={busy}>⚖️ OPEN VOTING</button>}</div>}
-    {phase==="voting"&&<div className="day-card"><strong>⚖️ VILLAGE VOTE</strong><p>Pilih pemain yang paling kamu curigai. Vote bisa diubah sebelum host membuka hasil.</p><div className="target-grid">{alive.map(p=><button key={p.id} className={"target-choice "+(selectedVote===p.id?"selected":"")} onClick={()=>setSelectedVote(p.id)}>{p.name}</button>)}</div><button className="primary action-submit" onClick={vote} disabled={busy||!selectedVote||!me?.is_alive}>{myVote?"CHANGE VOTE":"CAST VOTE"}</button><div className="action-progress"><b>{voteProgress?.submitted??0}/{voteProgress?.required??0} VOTES CAST</b></div>{room.host_player_id===myId&&<button className="primary resolve-button" onClick={resolveVotes} disabled={busy}>REVEAL VOTES</button>}</div>}
-    {phase==="hunter"&&<div className="day-card"><strong>🏹 HUNTER'S LAST SHOT</strong><p>Hunter sudah mati. Pilih satu pemain untuk ditembak.</p>{myRole==="HUNTER"&&!me?.is_alive&&<><div className="target-grid">{alive.map(p=><button key={p.id} className={"target-choice "+(selectedTarget===p.id?"selected":"")} onClick={()=>setSelectedTarget(p.id)}>{p.name}</button>)}</div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget||busy}>🔥 FIRE</button></>}{room.host_player_id===myId&&<button className="primary resolve-button" onClick={resolveHunter} disabled={busy}>RESOLVE HUNTER</button>}</div>}
-{phase==="game_over"&&<div className="day-card game-over"><strong>🏁 GAME OVER</strong><p>{lastNightSummary||"Permainan selesai."}</p></div>}
-   </div>}</section>
-  <aside className="panel chat"><div className="panel-head">VILLAGE CHAT <span>LIVE</span></div><div className="messages">{messages.map(m=><div className="msg" key={m.id}><b>{players.find(p=>p.id===m.player_id)?.name??"PLAYER"}</b><p>{m.body}</p></div>)}{!messages.length&&<div className="empty">Belum ada pesan.</div>}</div>
-   {(phase==="lobby"||phase==="day"||phase==="voting")?<div className="chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan..." maxLength={500}/><button onClick={send}>SEND</button></div>:<div className="chat-closed">Village chat ditutup selama malam.</div>}
-  </aside>
- </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>{room.host_player_id===myId?"HOST":"PLAYER"} · REALTIME CONNECTED</span></footer>
- {showIntro&&<div className="intro-overlay"><div className={"intro-card "+(myRole?.toLowerCase()??"")}>
-  <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon||"☾"}</div><div className="intro-line"></div>
-  <div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
-  <h2>{role?.name?.toUpperCase()||"YOUR ROLE"}</h2>
-  <p>{myRole==="WEREWOLF"?"Kamu bagian dari tim Werewolf. Berpura-puralah sebagai warga, koordinasikan korban, dan jangan sampai identitas timmu terbongkar.":myRole==="SEER"?"Kamu adalah mata desa. Setiap malam kamu dapat memeriksa satu pemain dan mengetahui role aslinya.":myRole==="DOCTOR"?"Kamu adalah pelindung desa. Setiap malam lindungi satu pemain dari serangan Werewolf.":myRole==="HUNTER"?"Kamu adalah Hunter. Kalau kamu mati, kamu mendapat satu kesempatan terakhir untuk menembak pemain hidup.":"Kamu adalah Villager. Tidak punya aksi malam, jadi kekuatanmu ada di pengamatan, diskusi, dan voting."}</p>
-  <div className="intro-rules">
+
+ const recentCutoff = Date.now() - 18000;
+ const bubbleByPlayer = new Map<string, any>();
+ messages.forEach((m) => {
+  if (new Date(m.created_at).getTime() >= recentCutoff) bubbleByPlayer.set(m.player_id, m);
+ });
+ if (!room) return <main className="game-loading"><div className="loading-mark">☾</div><p>{error || "MEMASUKI DESA..."}</p></main>;
+ const selectedTargetName = players.find((p) => p.id === selectedTarget)?.name;
+ const selectedVoteName = players.find((p) => p.id === selectedVote)?.name;
+ const phaseTitle = phase === "night" || phase === "resolution" ? "THE VILLAGE IS ASLEEP" : phase === "day" ? "THE VILLAGE WAKES" : phase === "voting" ? "THE VILLAGE MUST DECIDE" : phase === "hunter" ? "ONE LAST SHOT" : "THE GAME HAS ENDED";
+ const phaseSubtitle = phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
+ return <main className={"game game-room " + ((phase === "night" || phase === "resolution") ? "is-night" : "is-day")}>
+  <header className="top game-top">
+   <div className="brand">WEREWOLF<span>//</span>ONLINE</div>
+   <div className="room">ROOM <b>{room.code}</b></div>
+   <div className="game-top-right"><span className="phase-pill">{phase.toUpperCase()} · ROUND {room.round}</span><span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
+  </header>
+  <section className="gameplay-shell">
+   <div className="scene-heading">
+    <span className="scene-kicker">THE FORGOTTEN VILLAGE</span>
+    <span className="scene-subtitle">{phaseSubtitle}</span>
+   </div>
+   <div className="arena">
+    <div className="arena-stars"></div>
+    <div className="arena-fog fog-a"></div>
+    <div className="arena-fog fog-b"></div>
+    <div className="arena-ring ring-outer"></div>
+    <div className="arena-ring ring-inner"></div>
+    <div className="village-core" key={phase}>
+     <div className="core-moon">{phase === "day" || phase === "voting" ? "☀" : phase === "hunter" ? "⌁" : phase === "game_over" ? "✦" : "☾"}</div>
+     <span className="core-kicker">{phase === "night" || phase === "resolution" ? "NIGHTFALL" : phase === "day" ? "DAYBREAK" : phase === "voting" ? "THE VERDICT" : phase === "hunter" ? "LAST STAND" : "FINAL CHAPTER"}</span>
+     <h1>{phaseTitle}</h1>
+     <p>ROUND {room.round} <span>•</span> {alive.length} OF {players.length} SOULS REMAIN</p>
+     <div className="core-fire"><i></i><i></i><i></i><span>✦</span></div>
+    </div>
+    <div className="player-orbit">
+     {players.map((p, index) => {
+      const angle = (index / Math.max(players.length, 1)) * Math.PI * 2 - Math.PI / 2;
+      const targetable = p.is_alive && (
+       (phase === "night" && canActAtNight && nightTargets.some((t) => t.id === p.id)) ||
+       (phase === "voting" && !!me?.is_alive && p.id !== myId) ||
+       (phase === "hunter" && myRole === "HUNTER" && !me?.is_alive)
+      );
+      const chosen = selectedTarget === p.id || selectedVote === p.id;
+      const bubble = bubbleByPlayer.get(p.id);
+      return <button
+       type="button"
+       key={p.id}
+       className={"player-seat " + (p.id === myId ? "is-me " : "") + (!p.is_alive ? "is-dead " : "") + (targetable ? "is-targetable " : "") + (chosen ? "is-selected " : "") + (bubble && phase !== "night" ? "is-speaking" : "")}
+       style={{left:(50 + Math.cos(angle) * 42) + "%",top:(50 + Math.sin(angle) * 37) + "%",zIndex:Math.round(10 + Math.sin(angle) * 5)}}
+       disabled={!targetable}
+       aria-label={p.name + (p.is_alive ? ", alive" : ", dead")}
+       onClick={() => {
+        if (phase === "night" && targetable) setSelectedTarget(p.id);
+        if (phase === "voting" && targetable) setSelectedVote(p.id);
+        if (phase === "hunter" && targetable) setSelectedTarget(p.id);
+       }}
+      >
+       {bubble && phase !== "night" && <span className="speech-bubble" key={bubble.id}><b>{p.id === myId ? "YOU" : p.name}</b>{bubble.body}</span>}
+       <span className="avatar-halo"><span className="player-avatar">{p.is_alive ? p.name.trim().charAt(0).toUpperCase() : "✕"}</span><i className="alive-dot"></i></span>
+       <span className="seat-name">{p.name}</span>
+       <span className="seat-status">{p.id === myId ? "YOU" : p.is_alive ? "ALIVE" : "FALLEN"}</span>
+      </button>;
+     })}
+    </div>
+   </div>
+   <section className="game-dock">
+    <div className="role-chip">
+     <span className="role-chip-icon">{role?.icon || "?"}</span>
+     <span><small>YOUR ROLE</small><strong>{role?.name || "HIDDEN"}</strong></span>
+     <span className="role-chip-desc">{role?.desc || "Your identity is private."}</span>
+    </div>
+    <div className="phase-console">
+     {phase === "night" && <div className="phase-console-inner">
+      <div className="console-title"><span>NIGHT ACTION</span><small>{nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0} SUBMITTED</small></div>
+      <p>{myRole === "WEREWOLF" ? "Pilih warga yang akan menjadi korban. Rekan serigala: " + (allies.map(a=>a.name).join(", ") || "tidak ada") + "." : myRole === "SEER" ? "Ketuk profil pemain untuk memeriksa identitasnya." : myRole === "DOCTOR" ? "Pilih satu pemain untuk dilindungi malam ini." : "Kamu tidak memiliki aksi malam. Tunggu desa bangun."}</p>
+      {canActAtNight && <div className="selected-target"><span>TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div>}
+      {canActAtNight && <button className="primary action-submit" onClick={nightAction} disabled={busy || !selectedTarget}>{myNightAction ? "UPDATE NIGHT ACTION" : "CONFIRM ACTION"}</button>}
+      <div className="action-progress"><b>{myNightAction ? "✓ YOUR ACTION IS LOCKED IN" : canActAtNight ? "CHOOSE A PROFILE AROUND THE CIRCLE" : "WAITING FOR SPECIAL ROLES"}</b></div>
+      {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveNight} disabled={busy}>RESOLVE NIGHT · {nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0}</button>}
+     </div>}
+     {phase === "resolution" && <div className="phase-console-inner"><div className="console-title"><span>THE NIGHT UNFOLDS</span><small>SERVER RESOLUTION</small></div><p>Server sedang menghitung serangan, perlindungan, dan siapa yang masih bertahan.</p></div>}
+     {phase === "day" && <div className="phase-console-inner">
+      <div className="console-title"><span>DAYBREAK REPORT</span><small>DISCUSSION OPEN</small></div>
+      <p>{lastNightSummary || "Matahari terbit. Desa mulai mencari tahu apa yang terjadi semalam."}</p>
+      {seerResult && <div className="seer-result">🔮 HASIL RAHASIA: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name ?? seerResult.role}</b>. Hanya kamu yang melihat ini.</div>}
+      <div className="console-actions">{room.host_player_id === myId && <button className="primary" onClick={startVoting} disabled={busy}>OPEN VOTING</button>}</div>
+     </div>}
+     {phase === "voting" && <div className="phase-console-inner">
+      <div className="console-title"><span>VILLAGE VOTE</span><small>{voteProgress?.submitted ?? 0}/{voteProgress?.required ?? 0} VOTES</small></div>
+      <p>Ketuk profil pemain yang kamu curigai. Pilihanmu bisa diubah sebelum hasil dibuka.</p>
+      <div className="selected-target"><span>YOUR VOTE</span><strong>{selectedVoteName || "TAP A PLAYER PROFILE"}</strong></div>
+      <button className="primary action-submit" onClick={vote} disabled={busy || !selectedVote || !me?.is_alive}>{myVote ? "CHANGE VOTE" : "CAST VOTE"}</button>
+      {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveVotes} disabled={busy}>REVEAL VOTES</button>}
+     </div>}
+     {phase === "hunter" && <div className="phase-console-inner">
+      <div className="console-title"><span>HUNTER'S LAST SHOT</span><small>FINAL ABILITY</small></div>
+      <p>{myRole === "HUNTER" && !me?.is_alive ? "Pilih satu pemain hidup untuk dibawa bersamamu." : "Hunter sedang menentukan target terakhirnya."}</p>
+      {myRole === "HUNTER" && !me?.is_alive && <><div className="selected-target"><span>LAST TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget || busy}>FIRE</button></>}
+      {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveHunter} disabled={busy}>RESOLVE HUNTER</button>}
+     </div>}
+     {phase === "game_over" && <div className="phase-console-inner"><div className="console-title"><span>GAME OVER</span><small>THE VILLAGE IS QUIET</small></div><p>{lastNightSummary || "Permainan selesai."}</p></div>}
+    </div>
+    <div className="game-chat">
+     {phase === "day" || phase === "voting" ? <>
+      <span className="chat-status"><i></i> VILLAGE CHAT</span>
+      <div className="chat-compose"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan untuk desa..." maxLength={500}/><button onClick={send} disabled={!message.trim()}>SEND</button></div>
+     </> : <div className="chat-locked"><span>☾</span> {phase === "game_over" ? "GAME CHAT CLOSED" : "VILLAGE CHAT SLEEPS DURING THE NIGHT"}</div>}
+    </div>
+   </section>
+   <footer className="scene-footer"><span>ROOM {room.code}</span><span>{me?.name ?? "PLAYER"} · {room.host_player_id === myId ? "HOST" : "PLAYER"}</span><button onClick={leave} disabled={busy}>LEAVE GAME</button></footer>
+  </section>
+  {showIntro && <div className="intro-overlay"><div className={"intro-card " + (myRole?.toLowerCase() ?? "")}>
+   <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon || "☾"}</div><div className="intro-line"></div>
+   <div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
+   <h2>{role?.name?.toUpperCase() || "YOUR ROLE"}</h2>
+   <p>{myRole === "WEREWOLF" ? "Kamu bagian dari tim Werewolf. Berpura-puralah sebagai warga, koordinasikan korban, dan jangan sampai identitas timmu terbongkar." : myRole === "SEER" ? "Kamu adalah mata desa. Setiap malam kamu dapat memeriksa satu pemain dan mengetahui role aslinya." : myRole === "DOCTOR" ? "Kamu adalah pelindung desa. Setiap malam lindungi satu pemain dari serangan Werewolf." : myRole === "HUNTER" ? "Kamu adalah Hunter. Kalau kamu mati, kamu mendapat satu kesempatan terakhir untuk menembak pemain hidup." : "Kamu adalah Villager. Tidak punya aksi malam, jadi kekuatanmu ada di pengamatan, diskusi, dan voting."}</p>
+   <div className="intro-rules">
     <div><b>ROLE</b><span>{role?.desc}</span></div>
-    <div><b>YOUR GOAL</b><span>{myRole==="WEREWOLF"?"Buat jumlah Werewolf setidaknya sama dengan warga yang tersisa.":"Temukan dan singkirkan semua Werewolf sebelum mereka menguasai desa."}</span></div>
-    <div><b>YOUR ACTION</b><span>{myRole==="WEREWOLF"?"Pilih korban bersama timmu.":myRole==="SEER"?"Pilih satu pemain untuk diperiksa.":myRole==="DOCTOR"?"Pilih satu pemain untuk dilindungi.":myRole==="HUNTER"?"Jika mati, pilih satu target untuk ditembak.":"Tidak ada aksi malam. Gunakan diskusi dan voting."}</span></div>
-  </div>
-  {myRole==="WEREWOLF"&&<div className="intro-role"><span>YOUR PACK</span><strong>{allies.length?allies.map(a=>a.name).join(" · "):"YOU STAND ALONE"}</strong><small>Jangan pernah membocorkan daftar ini ke desa.</small></div>}
-  <div className="intro-role"><span>GAME FLOW</span><strong>🌙 NIGHT → ☀️ DAY → ⚖️ VOTE</strong><small>Malam untuk kemampuan rahasia. Siang untuk diskusi. Voting menentukan siapa yang tersingkir. Jika Hunter mati, dia mendapat fase khusus.</small></div>
-  <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTAND · ENTER NIGHT</button>
-</div></div>}
-{notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
- </main>
+    <div><b>YOUR GOAL</b><span>{myRole === "WEREWOLF" ? "Buat jumlah Werewolf setidaknya sama dengan warga yang tersisa." : "Temukan dan singkirkan semua Werewolf sebelum mereka menguasai desa."}</span></div>
+    <div><b>YOUR ACTION</b><span>{myRole === "WEREWOLF" ? "Pilih korban bersama timmu." : myRole === "SEER" ? "Pilih satu pemain untuk diperiksa." : myRole === "DOCTOR" ? "Pilih satu pemain untuk dilindungi." : myRole === "HUNTER" ? "Jika mati, pilih satu target untuk ditembak." : "Tidak ada aksi malam. Gunakan diskusi dan voting."}</span></div>
+   </div>
+   {myRole === "WEREWOLF" && <div className="intro-role"><span>YOUR PACK</span><strong>{allies.length ? allies.map(a=>a.name).join(" · ") : "YOU STAND ALONE"}</strong><small>Jangan pernah membocorkan daftar ini ke desa.</small></div>}
+   <div className="intro-role"><span>GAME FLOW</span><strong>🌙 NIGHT → ☀️ DAY → ⚖️ VOTE</strong><small>Malam untuk kemampuan rahasia. Siang untuk diskusi. Voting menentukan siapa yang tersingkir. Jika Hunter mati, dia mendapat fase khusus.</small></div>
+   <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTAND · ENTER THE VILLAGE</button>
+  </div></div>}
+  {notice && <div className="toast">✓ {notice}</div>}{error && <div className="toast error-toast">{error}</div>}
+ </main>;
+
 }
