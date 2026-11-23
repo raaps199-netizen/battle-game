@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import "../../../app/globals.css";
+import { supabase } from "@/lib/supabase";
 
 type Player={id:string;name:string;is_alive:boolean;created_at:string};
 type Room={id:string;code:string;status:"lobby"|"active"|"finished";round:number;host_player_id:string|null};
-type Phase="lobby"|"night"|"resolution"|"day"|"voting"|"game_over";
+type Phase="lobby"|"night"|"resolution"|"day"|"voting"|"hunter"|"game_over";
 
 const roles:Record<string,{name:string;icon:string;desc:string}>={
  WEREWOLF:{name:"Werewolf",icon:"☾",desc:"Bangun tiap malam dan pilih korban bersama serigala lain."},
@@ -22,10 +22,10 @@ export default function GameRoom(){
  const [name,setName]=useState(""),[roomCode,setRoomCode]=useState(""),[room,setRoom]=useState<Room|null>(null);
  const [players,setPlayers]=useState<Player[]>([]),[myId,setMyId]=useState(""),[myRole,setMyRole]=useState<string|null>(null);
  const [allies,setAllies]=useState<{id:string;name:string}[]>([]),[seerResult,setSeerResult]=useState<{player_name:string;role:string}|null>(null);
- const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null);
- const [selectedTarget,setSelectedTarget]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
+ const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null),[voteProgress,setVoteProgress]=useState<any>(null),[myVote,setMyVote]=useState<any>(null);
+ const [selectedTarget,setSelectedTarget]=useState(""),[selectedVote,setSelectedVote]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
  const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
- const [showIntro,setShowIntro]=useState(false);
+ const [showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false);
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
@@ -42,9 +42,9 @@ export default function GameRoom(){
     action:"snapshot",room_id:id,player_id:playerId,session_token:sessionToken
    }});
    if(e||!data){setError(e?.message??"Gagal memuat room.");return}
-   if(data.room)setRoom(data.room);
+   if(data.room?.status==="lobby"){window.location.href="/lobby/"+data.room.code;return} if(data.room?.status==="finished"){window.location.href="/";return} if(data.room)setRoom(data.room);
    if(Array.isArray(data.players))setPlayers(data.players);
-   if(["lobby","night","resolution","day","voting","game_over"].includes(data.phase))setPhase(data.phase);
+   if(["lobby","night","resolution","day","voting","hunter","game_over"].includes(data.phase))setPhase(data.phase);
    setNightProgress(data.night_progress??null);
    setLastNightSummary(data.last_night_summary??"");
    if(data.phase==="night"){
@@ -52,6 +52,7 @@ export default function GameRoom(){
     if(data.my_night_action?.target_player_id)setSelectedTarget((current:string)=>current||data.my_night_action.target_player_id);
    }else{setMyNightAction(null);setSelectedTarget("");}
  }
+ useEffect(()=>{const playerId=sessionStorage.getItem("werewolf_player_id");if(!playerId){window.location.href="/";return}load("session");},[]);
  async function loadChat(id:string){
    const {data}=await supabase.from("chat_messages").select("id,body,player_id,created_at").eq("room_id",id).eq("channel","general").order("created_at",{ascending:true}).limit(100);
    if(data)setMessages(data);
@@ -83,7 +84,7 @@ export default function GameRoom(){
     }
     setError(detail);
   } else {
-    setNotice("ROLE DIACAK · GAME DIMULAI");
+    setNotice("ROLE DIACAK · GAME DIMULAI");setShowIntro(true);
     await load(room.id);
     await fetchRole(myId);
   }
@@ -93,7 +94,7 @@ export default function GameRoom(){
   const token=sessionStorage.getItem("werewolf_session");if(!token)return;
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"role",player_id:id,session_token:token}});
   if(!e&&data?.role){
-   setMyRole(data.role);
+   setMyRole(data.role); if(!introShown){setShowIntro(true);setIntroShown(true);}
    setAllies(Array.isArray(data.allies)?data.allies:[]);
    setSeerResult(data.seer_result??null);
   }
@@ -112,6 +113,31 @@ export default function GameRoom(){
   setNotice("AKSI MALAM TERSIMPAN");
   await load(room.id);
   setBusy(false);
+ }
+ async function startVoting(){
+  if(!room||room.host_player_id!==myId)return;setBusy(true);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"start_voting",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
+  if(e||!data?.started)setError(data?.error??e?.message??"Gagal membuka voting.");else{setNotice("VOTING DIBUKA");await load(room.id)}setBusy(false);
+ }
+ async function vote(){
+  if(!room||!selectedVote)return;setBusy(true);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"vote",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),target_player_id:selectedVote}});
+  if(e||!data?.voted)setError(data?.error??e?.message??"Vote gagal.");else{setNotice("VOTE TERSIMPAN");await load(room.id)}setBusy(false);
+ }
+ async function resolveVotes(){
+  if(!room||room.host_player_id!==myId)return;setBusy(true);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_votes",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
+  if(e||!data?.resolved)setError(data?.error??e?.message??"Voting gagal.");else{setNotice(data.summary??"VOTING SELESAI");await load(room.id);await fetchRole(myId)}setBusy(false);
+ }
+ async function hunterAction(){
+  if(!room||!selectedTarget)return;setBusy(true);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"hunter_action",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),target_player_id:selectedTarget}});
+  if(e||!data?.submitted)setError(data?.error??e?.message??"Hunter gagal.");else{setNotice("TARGET HUNTER DIPILIH");await load(room.id)}setBusy(false);
+ }
+ async function resolveHunter(){
+  if(!room||room.host_player_id!==myId)return;setBusy(true);
+  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_hunter",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
+  if(e||!data?.resolved)setError(data?.error??e?.message??"Hunter gagal diselesaikan.");else{setNotice(data.summary??"HUNTER SELESAI");await load(room.id);await fetchRole(myId)}setBusy(false);
  }
  async function resolveNight(){
   if(!room||!myId||room.host_player_id!==myId)return;
@@ -174,15 +200,29 @@ export default function GameRoom(){
       {room.host_player_id===myId&&<div className="host-resolve"><button className="primary resolve-button" onClick={resolveNight} disabled={busy}>RESOLVE NIGHT</button><small>{nightProgress?`${nightProgress.submitted}/${nightProgress.required} aksi wajib terkirim`:"Menunggu status aksi..."}</small></div>}
     </div>}
     {phase==="resolution"&&<div className="day-card"><strong>RESOLVING NIGHT</strong><p>Server sedang menghitung pilihan, perlindungan, korban, dan kondisi menang.</p></div>}
-    {phase==="day"&&<div className="day-card"><strong>THE VILLAGE WAKES</strong><p>{lastNightSummary||"Malam telah selesai."}</p>{seerResult&&<div className="seer-result">HASIL PEMERIKSAAN: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name??seerResult.role}</b>. Hanya kamu yang melihat ini.</div>}<p className="day-hint">Diskusi desa dibuka. Voting akan masuk milestone berikutnya.</p></div>}
-    {phase==="voting"&&<div className="day-card"><strong>VOTING</strong><p>Fitur voting akan dibuka pada milestone berikutnya.</p></div>}
-    {phase==="game_over"&&<div className="day-card game-over"><strong>GAME OVER</strong><p>{lastNightSummary||"Permainan selesai."}</p>{seerResult&&<div className="seer-result">HASIL PEMERIKSAAN: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name??seerResult.role}</b>.</div>}</div>}
+    {phase==="day"&&<div className="day-card"><strong>☀️ THE VILLAGE WAKES</strong><p>{lastNightSummary||"Malam telah selesai."}</p>{seerResult&&<div className="seer-result">🔮 HASIL RAHASIA: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name??seerResult.role}</b>. Hanya kamu yang melihat ini.</div>}<p className="day-hint">💬 Diskusi terbuka. Bongkar alibi, cari kontradiksi, lalu voting.</p>{room.host_player_id===myId&&<button className="primary" onClick={startVoting} disabled={busy}>⚖️ OPEN VOTING</button>}</div>}
+    {phase==="voting"&&<div className="day-card"><strong>⚖️ VILLAGE VOTE</strong><p>Pilih pemain yang paling kamu curigai. Vote bisa diubah sebelum host membuka hasil.</p><div className="target-grid">{alive.map(p=><button key={p.id} className={"target-choice "+(selectedVote===p.id?"selected":"")} onClick={()=>setSelectedVote(p.id)}>{p.name}</button>)}</div><button className="primary action-submit" onClick={vote} disabled={busy||!selectedVote||!me?.is_alive}>{myVote?"CHANGE VOTE":"CAST VOTE"}</button><div className="action-progress"><b>{voteProgress?.submitted??0}/{voteProgress?.required??0} VOTES CAST</b></div>{room.host_player_id===myId&&<button className="primary resolve-button" onClick={resolveVotes} disabled={busy}>REVEAL VOTES</button>}</div>}
+    {phase==="hunter"&&<div className="day-card"><strong>🏹 HUNTER'S LAST SHOT</strong><p>Hunter sudah mati. Pilih satu pemain untuk ditembak.</p>{myRole==="HUNTER"&&!me?.is_alive&&<><div className="target-grid">{alive.map(p=><button key={p.id} className={"target-choice "+(selectedTarget===p.id?"selected":"")} onClick={()=>setSelectedTarget(p.id)}>{p.name}</button>)}</div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget||busy}>🔥 FIRE</button></>}{room.host_player_id===myId&&<button className="primary resolve-button" onClick={resolveHunter} disabled={busy}>RESOLVE HUNTER</button>}</div>}
+{phase==="game_over"&&<div className="day-card game-over"><strong>🏁 GAME OVER</strong><p>{lastNightSummary||"Permainan selesai."}</p></div>}
    </div>}</section>
   <aside className="panel chat"><div className="panel-head">VILLAGE CHAT <span>LIVE</span></div><div className="messages">{messages.map(m=><div className="msg" key={m.id}><b>{players.find(p=>p.id===m.player_id)?.name??"PLAYER"}</b><p>{m.body}</p></div>)}{!messages.length&&<div className="empty">Belum ada pesan.</div>}</div>
    {(phase==="lobby"||phase==="day"||phase==="voting")?<div className="chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan..." maxLength={500}/><button onClick={send}>SEND</button></div>:<div className="chat-closed">Village chat ditutup selama malam.</div>}
   </aside>
  </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>{room.host_player_id===myId?"HOST":"PLAYER"} · REALTIME CONNECTED</span></footer>
- {showIntro&&<div className="intro-overlay"><div className={`intro-card ${myRole?.toLowerCase()??""}`}><div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">☾</div><div className="intro-line"></div><div className="eyebrow">WEREWOLF // ONLINE</div><h2>THE NIGHT BEGINS</h2><p>Desa sudah tertidur. Di antara kalian ada Werewolf yang sedang mencari korban.</p><div className="intro-rules"><div><b>01</b><span>Jaga identitasmu tetap rahasia.</span></div><div><b>02</b><span>Gunakan kemampuanmu saat malam.</span></div><div><b>03</b><span>Saat siang, diskusikan siapa yang mencurigakan.</span></div></div><div className="intro-role"><span>YOUR SECRET ROLE</span><strong>{role?.icon} {role?.name??"..."}</strong><small>{role?.desc??"Role sedang disiapkan oleh server."}</small></div><button className="primary intro-button" onClick={()=>setShowIntro(false)}>ENTER THE NIGHT</button></div></div>}
- {notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
+ {showIntro&&<div className="intro-overlay"><div className={"intro-card "+(myRole?.toLowerCase()??"")}>
+  <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon||"☾"}</div><div className="intro-line"></div>
+  <div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
+  <h2>{role?.name?.toUpperCase()||"YOUR ROLE"}</h2>
+  <p>{myRole==="WEREWOLF"?"Kamu bagian dari tim Werewolf. Berpura-puralah sebagai warga, koordinasikan korban, dan jangan sampai identitas timmu terbongkar.":myRole==="SEER"?"Kamu adalah mata desa. Setiap malam kamu dapat memeriksa satu pemain dan mengetahui role aslinya.":myRole==="DOCTOR"?"Kamu adalah pelindung desa. Setiap malam lindungi satu pemain dari serangan Werewolf.":myRole==="HUNTER"?"Kamu adalah Hunter. Kalau kamu mati, kamu mendapat satu kesempatan terakhir untuk menembak pemain hidup.":"Kamu adalah Villager. Tidak punya aksi malam, jadi kekuatanmu ada di pengamatan, diskusi, dan voting."}</p>
+  <div className="intro-rules">
+    <div><b>ROLE</b><span>{role?.desc}</span></div>
+    <div><b>YOUR GOAL</b><span>{myRole==="WEREWOLF"?"Buat jumlah Werewolf setidaknya sama dengan warga yang tersisa.":"Temukan dan singkirkan semua Werewolf sebelum mereka menguasai desa."}</span></div>
+    <div><b>YOUR ACTION</b><span>{myRole==="WEREWOLF"?"Pilih korban bersama timmu.":myRole==="SEER"?"Pilih satu pemain untuk diperiksa.":myRole==="DOCTOR"?"Pilih satu pemain untuk dilindungi.":myRole==="HUNTER"?"Jika mati, pilih satu target untuk ditembak.":"Tidak ada aksi malam. Gunakan diskusi dan voting."}</span></div>
+  </div>
+  {myRole==="WEREWOLF"&&<div className="intro-role"><span>YOUR PACK</span><strong>{allies.length?allies.map(a=>a.name).join(" · "):"YOU STAND ALONE"}</strong><small>Jangan pernah membocorkan daftar ini ke desa.</small></div>}
+  <div className="intro-role"><span>GAME FLOW</span><strong>🌙 NIGHT → ☀️ DAY → ⚖️ VOTE</strong><small>Malam untuk kemampuan rahasia. Siang untuk diskusi. Voting menentukan siapa yang tersingkir. Jika Hunter mati, dia mendapat fase khusus.</small></div>
+  <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTAND · ENTER NIGHT</button>
+</div></div>}
+{notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
  </main>
 }
