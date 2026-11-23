@@ -75,7 +75,7 @@ async function authenticate(db: ReturnType<typeof secret>, playerId: unknown, se
 
   const { data: player } = await db
     .from("players")
-    .select("id,room_id,name,is_alive,created_at")
+    .select("id,room_id,name,is_alive,is_bot,created_at")
     .eq("id", playerId)
     .maybeSingle();
 
@@ -173,6 +173,27 @@ Deno.serve(async (req: Request) => {
       return json({ room, player_id, session_token });
     }
 
+    if (body.action === "add_bot") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      const { data: room, error: roomError } = await db.from("rooms").select("id,code,status,host_player_id").eq("id", player.room_id).single();
+      if (roomError) throw roomError;
+      if (!room || room.status !== "lobby" || room.host_player_id !== player.id) return json({ error: "Only the host can add bots in the lobby" }, 403);
+      const { count, error: countError } = await db.from("players").select("id", { count: "exact", head: true }).eq("room_id", player.room_id);
+      if (countError) throw countError;
+      if ((count ?? 0) >= 20) return json({ error: "Room is full" }, 400);
+      const requestedName = cleanName(body.name);
+      const base = requestedName || "BOT";
+      const { data: existing } = await db.from("players").select("name").eq("room_id", player.room_id);
+      const used = new Set((existing ?? []).map((p: any) => p.name.toLowerCase()));
+      let name = base, suffix = 1;
+      while (used.has(name.toLowerCase())) { suffix++; name = base + " " + suffix; }
+      const botId = crypto.randomUUID();
+      const { error: insertError } = await db.from("players").insert({ id: botId, room_id: player.room_id, name, is_alive: true, hp: 1, is_bot: true });
+      if (insertError) throw insertError;
+      return json({ added: true, player: { id: botId, name, is_alive: true, is_bot: true } });
+    }
+
     if (body.action === "snapshot") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
@@ -187,7 +208,7 @@ Deno.serve(async (req: Request) => {
             .eq("id", player.room_id)
             .single(),
           db.from("players")
-            .select("id,name,is_alive,created_at")
+            .select("id,name,is_alive,is_bot,created_at")
             .eq("room_id", player.room_id)
             .order("created_at"),
           db.from("game_states")
@@ -553,6 +574,24 @@ Deno.serve(async (req: Request) => {
         if (actionsError) throw actionsError;
 
         const livingIds = new Set((livingPlayers ?? []).map((p: any) => p.id));
+        const botPlayers = (livingPlayers ?? []).filter((p: any) => p.is_bot);
+        for (const bot of botPlayers as any[]) {
+          const botRole = roleById.get(bot.id);
+          if (!["WEREWOLF", "SEER", "DOCTOR"].includes(botRole)) continue;
+          if (actionsByPlayer.get(bot.id)) continue;
+          let candidates = (livingPlayers ?? []).filter((p: any) => p.is_alive);
+          if (botRole === "WEREWOLF") candidates = candidates.filter((p: any) => roleById.get(p.id) !== "WEREWOLF");
+          if (botRole === "SEER") candidates = candidates.filter((p: any) => p.id !== bot.id);
+          if (botRole === "DOCTOR" && room.round > 1) {
+            const { data: previous } = await db.from("night_actions").select("target_player_id").eq("room_id", player.room_id).eq("player_id", bot.id).eq("night", room.round - 1).eq("action_type", "DOCTOR_PROTECT").maybeSingle();
+            candidates = candidates.filter((p: any) => p.id !== previous?.target_player_id);
+          }
+          if (!candidates.length) continue;
+          const target = candidates[randomInt(candidates.length)];
+          const actionType = botRole === "WEREWOLF" ? "WOLF_KILL" : botRole === "SEER" ? "SEER_CHECK" : "DOCTOR_PROTECT";
+          const { error: botActionError } = await db.from("night_actions").upsert({ room_id: player.room_id, player_id: bot.id, night: room.round, action_type: actionType, target_player_id: target.id }, { onConflict: "room_id,player_id,night" });
+          if (botActionError) throw botActionError;
+        }
         const roleById = new Map((roleRows ?? []).map((r: any) => [r.player_id, r.role]));
         const requiredActors = (roleRows ?? []).filter((r: any) =>
           livingIds.has(r.player_id) && ["WEREWOLF", "SEER", "DOCTOR"].includes(r.role)
@@ -692,7 +731,18 @@ Deno.serve(async (req: Request) => {
         db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id),
       ]);
       const livingIds = new Set((living ?? []).map((p: any) => p.id));
-      const validVotes = (votes ?? []).filter((v: any) => livingIds.has(v.voter_id) && livingIds.has(v.target_player_id));
+      for (const bot of (living ?? []).filter((p: any) => p.is_bot) as any[]) {
+        const existing = (votes ?? []).find((v: any) => v.voter_id === bot.id);
+        if (existing) continue;
+        const candidates = (living ?? []).filter((p: any) => p.id !== bot.id);
+        if (!candidates.length) continue;
+        const target = candidates[randomInt(candidates.length)];
+        const { error: botVoteError } = await db.from("votes").insert({ room_id: player.room_id, voter_id: bot.id, target_player_id: target.id, day: room.round });
+        if (botVoteError && botVoteError.code !== "23505") throw botVoteError;
+      }
+      const { data: refreshedVotes } = await db.from("votes").select("voter_id,target_player_id").eq("room_id", player.room_id).eq("day", room.round);
+      const allVotes = refreshedVotes ?? votes ?? [];
+      const validVotes = allVotes.filter((v: any) => livingIds.has(v.voter_id) && livingIds.has(v.target_player_id));
       if (validVotes.length < (living ?? []).length) return json({ error: "Tunggu semua pemain hidup selesai voting" }, 409);
       const tally = new Map<string, number>();
       for (const v of validVotes) tally.set(v.target_player_id, (tally.get(v.target_player_id) ?? 0) + 1);
@@ -737,7 +787,21 @@ Deno.serve(async (req: Request) => {
       if (!player) return json({ error: "Invalid session" }, 403);
       const { data: room } = await db.from("rooms").select("id,status,round,host_player_id").eq("id", player.room_id).single();
       if (!room || room.host_player_id !== player.id || room.status !== "active") return json({ error: "Only the host can resolve Hunter" }, 403);
-      const { data: hunterAction } = await db.from("actions").select("player_id,target_player_id").eq("room_id", player.room_id).eq("action_type","HUNTER_SHOT").order("created_at",{ascending:false}).limit(1).maybeSingle();
+      let { data: hunterAction } = await db.from("actions").select("player_id,target_player_id").eq("room_id", player.room_id).eq("action_type","HUNTER_SHOT").order("created_at",{ascending:false}).limit(1).maybeSingle();
+      if (!hunterAction) {
+        const { data: pendingHunter } = await db.from("actions").select("player_id").eq("room_id", player.room_id).eq("action_type","HUNTER_PENDING").order("created_at",{ascending:false}).limit(1).maybeSingle();
+        if (pendingHunter) {
+          const { data: hunterPlayer } = await db.from("players").select("is_bot").eq("id", pendingHunter.player_id).single();
+          if (hunterPlayer?.is_bot) {
+            const { data: targets } = await db.from("players").select("id").eq("room_id", player.room_id).eq("is_alive", true).neq("id", pendingHunter.player_id);
+            if (targets?.length) {
+              const target = targets[randomInt(targets.length)];
+              const { data: insertedHunter } = await db.from("actions").insert({ room_id: player.room_id, player_id: pendingHunter.player_id, target_player_id: target.id, action_type:"HUNTER_SHOT", round:room.round }).select("player_id,target_player_id").single();
+              hunterAction = insertedHunter;
+            }
+          }
+        }
+      }
       if (!hunterAction?.target_player_id) return json({ error: "Hunter has not chosen a target" }, 409);
       const { data: target } = await db.from("players").select("id,name,is_alive").eq("id", hunterAction.target_player_id).eq("room_id", player.room_id).single();
       if (!target?.is_alive) return json({ error: "Hunter target is no longer alive" }, 409);
@@ -745,7 +809,7 @@ Deno.serve(async (req: Request) => {
       const [{ data: roles }, { data: alive }] = await Promise.all([db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id), db.from("players").select("id,is_alive").eq("room_id", player.room_id).eq("is_alive", true)]);
       const roleById = new Map((roles ?? []).map((r:any)=>[r.player_id,r.role]));
       const wolves = (alive ?? []).filter((p:any)=>roleById.get(p.id)==="WEREWOLF").length; const others = (alive ?? []).length-wolves;
-      let winner: "WEREWOLVES"|"VILLAGERS"|null = null; if(wolves===0) winner="VILLAGERS"; else if(wolves>=others) winner="WEREWOLVES";
+      let winner: "WEREWOLVES"|"VILLAGERS"|null = null; if(wolves===0) winner="VILLAGERS"; else if(others===0) winner="WEREWOLVES";
       const { data: pending } = await db.from("actions").select("action_data").eq("room_id",player.room_id).eq("player_id",hunterAction.player_id).eq("action_type","HUNTER_PENDING").order("created_at",{ascending:false}).limit(1).maybeSingle();
       const returnPhase = pending?.action_data?.return_phase === "night" ? "night" : "day";
       let summary = `${target.name} ditembak Hunter dan tersingkir.`; if(winner) summary += winner==="WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!";
