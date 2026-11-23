@@ -250,9 +250,12 @@ Deno.serve(async (req: Request) => {
           const actorPlayer: any = playerById.get(actor.player_id);
           if (!actorPlayer?.is_bot || actionByPlayer.has(actor.player_id)) continue;
 
-          let candidates = livingPlayers.filter((p: any) => p.id !== actor.player_id);
+          let candidates = livingPlayers;
           if (actor.role === "WEREWOLF") {
             candidates = candidates.filter((p: any) => roleById.get(p.id) !== "WEREWOLF");
+          }
+          if (actor.role === "SEER") {
+            candidates = candidates.filter((p: any) => p.id !== actor.player_id);
           }
           if (actor.role === "DOCTOR" && room.round > 1) {
             const { data: previous, error: previousError } = await db.from("night_actions")
