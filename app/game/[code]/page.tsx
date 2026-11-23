@@ -24,7 +24,7 @@ export default function GameRoom(){
  const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null),[voteProgress,setVoteProgress]=useState<any>(null),[myVote,setMyVote]=useState<any>(null);
  const [selectedTarget,setSelectedTarget]=useState(""),[selectedVote,setSelectedVote]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
  const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
- const [showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false);
+ const [showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[nightReportOpen,setNightReportOpen]=useState(false),[nightReportSeen,setNightReportSeen]=useState("");
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
@@ -33,7 +33,7 @@ export default function GameRoom(){
 
  useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){const legacyId=localStorage.getItem("werewolf_player_id");const legacyToken=localStorage.getItem("werewolf_session");if(legacyId&&legacyToken){id=legacyId;sessionStorage.setItem("werewolf_player_id",id);sessionStorage.setItem("werewolf_session",legacyToken)}}if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
 
- async function load(id:string){
+ useEffect(()=>{\n   if(phase==="day" && lastNightSummary==="Tidak ada korban malam ini." && room){\n    const key=`${room.round}:${lastNightSummary}`;\n    if(nightReportSeen!==key){setNightReportSeen(key);setNightReportOpen(true);}\n   }\n },[phase,lastNightSummary,room?.round]);\n\n async function load(id:string){
    const playerId=sessionStorage.getItem("werewolf_player_id");
    const sessionToken=sessionStorage.getItem("werewolf_session");
    if(!playerId||!sessionToken)return;
