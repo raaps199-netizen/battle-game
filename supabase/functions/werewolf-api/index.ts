@@ -228,6 +228,19 @@ Deno.serve(async (req: Request) => {
         my_night_action = (actionRows ?? []).find((a: any) => a.player_id === player.id) ?? null;
       }
 
+      let vote_progress = null;
+      let my_vote = null;
+      if (["day", "voting"].includes(state.phase)) {
+        const { data: votes, error: votesError } = await db.from("votes")
+          .select("voter_id,target_player_id").eq("room_id", player.room_id).eq("day", room.round);
+        if (votesError) throw votesError;
+        const livingIds = new Set((players ?? []).filter((p: any) => p.is_alive).map((p: any) => p.id));
+        const required = (players ?? []).filter((p: any) => p.is_alive).length;
+        const validVotes = (votes ?? []).filter((v: any) => livingIds.has(v.voter_id));
+        vote_progress = { submitted: validVotes.length, required };
+        my_vote = validVotes.find((v: any) => v.voter_id === player.id) ?? null;
+      }
+
       return json({
         room,
         players: players ?? [],
@@ -235,6 +248,8 @@ Deno.serve(async (req: Request) => {
         last_night_summary: state.last_night_summary,
         night_progress,
         my_night_action,
+        vote_progress,
+        my_vote,
       });
     }
 
@@ -567,6 +582,108 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (body.action === "start_voting") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      const { data: room, error: roomError } = await db.from("rooms").select("id,status,round,host_player_id").eq("id", player.room_id).single();
+      if (roomError) throw roomError;
+      const { data: state } = await db.from("game_states").select("phase").eq("room_id", player.room_id).single();
+      if (!room || room.status !== "active" || room.host_player_id !== player.id || state?.phase !== "day") return json({ error: "Only the host can start voting now" }, 403);
+      await db.from("votes").delete().eq("room_id", player.room_id).eq("day", room.round);
+      await db.from("game_states").update({ phase: "voting", updated_at: new Date().toISOString() }).eq("room_id", player.room_id).eq("phase", "day");
+      return json({ started: true, phase: "voting" });
+    }
+
+    if (body.action === "vote") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      if (!player.is_alive) return json({ error: "Dead players cannot vote" }, 403);
+      const { data: room } = await db.from("rooms").select("id,status,round").eq("id", player.room_id).single();
+      const { data: state } = await db.from("game_states").select("phase").eq("room_id", player.room_id).single();
+      if (!room || room.status !== "active" || state?.phase !== "voting") return json({ error: "Voting is closed" }, 409);
+      const { data: target } = await db.from("players").select("id,is_alive").eq("id", body.target_player_id).eq("room_id", player.room_id).maybeSingle();
+      if (!target?.is_alive) return json({ error: "Target must be alive" }, 400);
+      await db.from("votes").delete().eq("room_id", player.room_id).eq("voter_id", player.id).eq("day", room.round);
+      const { data: saved, error } = await db.from("votes").insert({ room_id: player.room_id, voter_id: player.id, target_player_id: target.id, day: room.round }).select("voter_id,target_player_id").single();
+      if (error) throw error;
+      return json({ voted: true, vote: saved });
+    }
+
+    if (body.action === "resolve_votes") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      const { data: room, error: roomError } = await db.from("rooms").select("id,status,round,host_player_id").eq("id", player.room_id).single();
+      if (roomError) throw roomError;
+      const { data: state } = await db.from("game_states").select("phase").eq("room_id", player.room_id).single();
+      if (!room || room.status !== "active" || room.host_player_id !== player.id || state?.phase !== "voting") return json({ error: "Only the host can resolve voting" }, 403);
+      const [{ data: living }, { data: votes }, { data: roles }] = await Promise.all([
+        db.from("players").select("id,name,is_alive").eq("room_id", player.room_id).eq("is_alive", true),
+        db.from("votes").select("voter_id,target_player_id").eq("room_id", player.room_id).eq("day", room.round),
+        db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id),
+      ]);
+      const livingIds = new Set((living ?? []).map((p: any) => p.id));
+      const validVotes = (votes ?? []).filter((v: any) => livingIds.has(v.voter_id) && livingIds.has(v.target_player_id));
+      if (validVotes.length < (living ?? []).length) return json({ error: "Tunggu semua pemain hidup selesai voting" }, 409);
+      const tally = new Map<string, number>();
+      for (const v of validVotes) tally.set(v.target_player_id, (tally.get(v.target_player_id) ?? 0) + 1);
+      let eliminatedId: string | null = null;
+      if (tally.size) { const high = Math.max(...tally.values()); const leaders = [...tally.entries()].filter(([, n]) => n === high); if (leaders.length === 1) eliminatedId = leaders[0][0]; }
+      let summary = eliminatedId ? `${(living ?? []).find((p: any) => p.id === eliminatedId)?.name ?? "Pemain"} mendapat suara terbanyak dan tersingkir.` : "Voting seri. Tidak ada yang tersingkir.";
+      if (eliminatedId) await db.from("players").update({ is_alive: false, hp: 0 }).eq("id", eliminatedId).eq("room_id", player.room_id).eq("is_alive", true);
+      const roleById = new Map((roles ?? []).map((r: any) => [r.player_id, r.role]));
+      const remaining = (living ?? []).filter((p: any) => p.id !== eliminatedId);
+      const wolvesAlive = remaining.filter((p: any) => roleById.get(p.id) === "WEREWOLF").length;
+      const othersAlive = remaining.length - wolvesAlive;
+      let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
+      if (wolvesAlive === 0) winner = "VILLAGERS"; else if (wolvesAlive >= othersAlive) winner = "WEREWOLVES";
+      if (eliminatedId && roleById.get(eliminatedId) === "HUNTER") {
+        await db.from("actions").insert({ room_id: player.room_id, player_id: eliminatedId, action_type: "HUNTER_PENDING", round: room.round, action_data: { return_phase: winner ? "game_over" : "night" } });
+        await db.from("game_states").update({ phase: "hunter", last_night_summary: summary, updated_at: new Date().toISOString() }).eq("room_id", player.room_id).eq("phase", "voting");
+        return json({ resolved: true, summary, hunter: true, winner, phase: "hunter" });
+      }
+      if (winner) { summary += winner === "WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!"; await db.from("rooms").update({ status: "finished" }).eq("id", player.room_id).eq("status", "active"); }
+      else await db.from("rooms").update({ round: room.round + 1 }).eq("id", player.room_id);
+      const nextPhase = winner ? "game_over" : "night";
+      await db.from("game_states").update({ phase: nextPhase, last_night_summary: summary, resolution_version: 1, updated_at: new Date().toISOString() }).eq("room_id", player.room_id).eq("phase", "voting");
+      return json({ resolved: true, summary, winner, phase: nextPhase });
+    }
+
+    if (body.action === "hunter_action") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      if (player.is_alive) return json({ error: "Hunter ability is only for a dead Hunter" }, 403);
+      const { data: state } = await db.from("game_states").select("phase").eq("room_id", player.room_id).single();
+      const { data: role } = await db.from("werewolf_roles").select("role").eq("player_id", player.id).maybeSingle();
+      if (state?.phase !== "hunter" || role?.role !== "HUNTER") return json({ error: "Hunter is not active" }, 403);
+      const { data: target } = await db.from("players").select("id,is_alive").eq("id", body.target_player_id).eq("room_id", player.room_id).maybeSingle();
+      if (!target?.is_alive || target.id === player.id) return json({ error: "Choose a living target" }, 400);
+      await db.from("actions").delete().eq("room_id", player.room_id).eq("player_id", player.id).in("action_type", ["HUNTER_PENDING","HUNTER_SHOT"]);
+      await db.from("actions").insert({ room_id: player.room_id, player_id: player.id, target_player_id: target.id, action_type: "HUNTER_SHOT", round: (await db.from("rooms").select("round").eq("id", player.room_id).single()).data?.round });
+      return json({ submitted: true });
+    }
+
+    if (body.action === "resolve_hunter") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      const { data: room } = await db.from("rooms").select("id,status,round,host_player_id").eq("id", player.room_id).single();
+      if (!room || room.host_player_id !== player.id || room.status !== "active") return json({ error: "Only the host can resolve Hunter" }, 403);
+      const { data: hunterAction } = await db.from("actions").select("player_id,target_player_id").eq("room_id", player.room_id).eq("action_type","HUNTER_SHOT").order("created_at",{ascending:false}).limit(1).maybeSingle();
+      if (!hunterAction?.target_player_id) return json({ error: "Hunter has not chosen a target" }, 409);
+      const { data: target } = await db.from("players").select("id,name,is_alive").eq("id", hunterAction.target_player_id).eq("room_id", player.room_id).single();
+      if (!target?.is_alive) return json({ error: "Hunter target is no longer alive" }, 409);
+      await db.from("players").update({ is_alive: false, hp: 0 }).eq("id", target.id).eq("is_alive", true);
+      const [{ data: roles }, { data: alive }] = await Promise.all([db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id), db.from("players").select("id,is_alive").eq("room_id", player.room_id).eq("is_alive", true)]);
+      const roleById = new Map((roles ?? []).map((r:any)=>[r.player_id,r.role]));
+      const wolves = (alive ?? []).filter((p:any)=>roleById.get(p.id)==="WEREWOLF").length; const others = (alive ?? []).length-wolves;
+      let winner: "WEREWOLVES"|"VILLAGERS"|null = null; if(wolves===0) winner="VILLAGERS"; else if(wolves>=others) winner="WEREWOLVES";
+      const { data: pending } = await db.from("actions").select("action_data").eq("room_id",player.room_id).eq("player_id",hunterAction.player_id).eq("action_type","HUNTER_PENDING").order("created_at",{ascending:false}).limit(1).maybeSingle();
+      const returnPhase = pending?.action_data?.return_phase === "night" ? "night" : "day";
+      let summary = `${target.name} ditembak Hunter dan tersingkir.`; if(winner) summary += winner==="WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!";
+      const nextPhase = winner ? "game_over" : returnPhase;
+      if(winner) await db.from("rooms").update({status:"finished"}).eq("id",player.room_id).eq("status","active"); else if(returnPhase==="night") await db.from("rooms").update({round:room.round+1}).eq("id",player.room_id);
+      await db.from("game_states").update({phase:nextPhase,last_night_summary:summary,updated_at:new Date().toISOString()}).eq("room_id",player.room_id).eq("phase","hunter");
+      return json({resolved:true,summary,winner,phase:nextPhase});
+    }
     if (body.action === "chat_send") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
@@ -586,10 +703,10 @@ Deno.serve(async (req: Request) => {
       if (roomError) throw roomError;
       if (stateError) throw stateError;
       if (room.status === "finished") return json({ error: "Room is finished" }, 400);
-      if (room.status === "active" && !player.is_alive) {
+      if (room.status === "active" && !player.is_alive && state.phase !== "game_over" && state.phase !== "hunter") {
         return json({ error: "Dead players cannot send village messages" }, 403);
       }
-      if (room.status === "active" && !["day", "voting"].includes(state.phase)) {
+      if (room.status === "active" && !["day", "voting", "hunter"].includes(state.phase)) {
         return json({ error: "Village chat is closed at night" }, 403);
       }
 
