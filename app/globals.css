@@ -275,3 +275,8 @@
 .dawn-opening-button:hover{transform:translateY(-2px);box-shadow:0 16px 38px rgba(140,103,39,.3)}
 .dawn-opening-button span{font-size:17px}
 @media(max-width:620px){.dawn-opening{padding:14px}.dawn-opening-content{padding:28px 17px;border-radius:20px}.dawn-opening-kicker{font-size:6px;letter-spacing:1.5px}.dawn-opening-sun{width:83px;height:83px;font-size:52px;margin:21px auto 14px}.dawn-opening-content h1{font-size:27px;letter-spacing:1.4px}.dawn-opening-content p{font-size:11px}.dawn-opening-rule{font-size:6px;gap:8px;letter-spacing:.8px}}
+
+
+.spectator-pill{padding:5px 8px;border:1px solid rgba(192,157,255,.28);border-radius:999px;background:rgba(153,112,219,.12);color:#cdb6ff;font-size:7px;font-weight:800;letter-spacing:1.2px;white-space:nowrap}
+.chat-status.is-ghost{color:#cbb6ff}
+.chat-status.is-ghost i{background:#c49aff;box-shadow:0 0 12px #b68bff}
