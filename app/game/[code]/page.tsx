@@ -338,7 +338,7 @@ export default function GameRoom(){
     </div>
     <div className="game-chat">
      {room.status === "active" && (isSpectator || phase === "day" || phase === "voting") ? <>
-      <span className="chat-status"><i></i> {isSpectator ? "GHOST CHAT · THE AFTERLIFE" : "VILLAGE CHAT"}</span>
+      <span className={"chat-status "+(isSpectator?"is-ghost":"")}><i></i> {isSpectator ? "GHOST CHAT · THE AFTERLIFE" : "VILLAGE CHAT"}</span>
       <div className="chat-compose"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={isSpectator ? "Kirim pesan ke para arwah..." : "Ketik pesan untuk desa..."} maxLength={500}/><button onClick={send} disabled={!message.trim()}>SEND</button></div>
      </> : <div className="chat-locked"><span>{isSpectator?"✧":"☾"}</span> {phase === "game_over" ? "GAME CHAT CLOSED" : isSpectator ? "AFTERLIFE CHAT OPENS WHILE THE GAME CONTINUES" : "VILLAGE CHAT SLEEPS DURING THE NIGHT"}</div>}
     </div>
