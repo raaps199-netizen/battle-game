@@ -33,7 +33,14 @@ export default function GameRoom(){
 
  useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){const legacyId=localStorage.getItem("werewolf_player_id");const legacyToken=localStorage.getItem("werewolf_session");if(legacyId&&legacyToken){id=legacyId;sessionStorage.setItem("werewolf_player_id",id);sessionStorage.setItem("werewolf_session",legacyToken)}}if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
 
- useEffect(()=>{\n   if(phase==="day" && lastNightSummary==="Tidak ada korban malam ini." && room){\n    const key=`${room.round}:${lastNightSummary}`;\n    if(nightReportSeen!==key){setNightReportSeen(key);setNightReportOpen(true);}\n   }\n },[phase,lastNightSummary,room?.round]);\n\n async function load(id:string){
+ useEffect(()=>{
+   if(phase==="day" && lastNightSummary==="Tidak ada korban malam ini." && room){
+    const key=`${room.round}:${lastNightSummary}`;
+    if(nightReportSeen!==key){setNightReportSeen(key);setNightReportOpen(true);}
+   }
+ },[phase,lastNightSummary,room?.round]);
+
+ async function load(id:string){
    const playerId=sessionStorage.getItem("werewolf_player_id");
    const sessionToken=sessionStorage.getItem("werewolf_session");
    if(!playerId||!sessionToken)return;
