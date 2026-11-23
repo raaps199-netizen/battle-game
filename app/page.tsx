@@ -31,11 +31,11 @@ export default function Home(){
  const canActAtNight=["WEREWOLF","SEER","DOCTOR"].includes(myRole??"");
  const nightTargets=alive.filter(p=>myRole==="DOCTOR"||(p.id!==myId&&!allies.some(a=>a.id===p.id)));
 
- useEffect(()=>{let id=localStorage.getItem("werewolf_player_id");if(!id){id=crypto.randomUUID();localStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
+ useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
 
  async function load(id:string){
-   const playerId=localStorage.getItem("werewolf_player_id");
-   const sessionToken=localStorage.getItem("werewolf_session");
+   const playerId=sessionStorage.getItem("werewolf_player_id");
+   const sessionToken=sessionStorage.getItem("werewolf_session");
    if(!playerId||!sessionToken)return;
    const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
     action:"snapshot",room_id:id,player_id:playerId,session_token:sessionToken
@@ -71,7 +71,7 @@ export default function Home(){
   setBusy(true);setError("");
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"create",name:name.trim()}});
   if(e||!data){setError(e?.message??"Gagal bikin room.");setBusy(false);return}
-  localStorage.setItem("werewolf_player_id",data.player_id);localStorage.setItem("werewolf_session",data.session_token);
+  sessionStorage.setItem("werewolf_player_id",data.player_id);sessionStorage.setItem("werewolf_session",data.session_token);
   setMyId(data.player_id);setRoom(data.room);await load(data.room.id);if(data.room.status==="active")await fetchRole(data.player_id);setBusy(false);
  }
  async function join(){
@@ -79,12 +79,12 @@ export default function Home(){
   setBusy(true);setError("");
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"join",name:name.trim(),code:roomCode.trim().toUpperCase()}});
   if(e||!data){setError(e?.message??"Gagal join room.");setBusy(false);return}
-  localStorage.setItem("werewolf_player_id",data.player_id);localStorage.setItem("werewolf_session",data.session_token);
+  sessionStorage.setItem("werewolf_player_id",data.player_id);sessionStorage.setItem("werewolf_session",data.session_token);
   setMyId(data.player_id);setRoom(data.room);await load(data.room.id);setBusy(false);
  }
  async function start(){
   if(!room||room.host_player_id!==myId)return;
-  setBusy(true);const {error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"start",room_id:room.id,player_id:myId,session_token:localStorage.getItem("werewolf_session")}});
+  setBusy(true);const {error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"start",room_id:room.id,player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
   if (e) {
     let detail = e.message;
     try {
@@ -105,7 +105,7 @@ export default function Home(){
   setBusy(false);
  }
  async function fetchRole(id:string){
-  const token=localStorage.getItem("werewolf_session");if(!token)return;
+  const token=sessionStorage.getItem("werewolf_session");if(!token)return;
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"role",player_id:id,session_token:token}});
   if(!e&&data?.role){
    setMyRole(data.role);
@@ -117,7 +117,7 @@ export default function Home(){
   if(!room||!myId||!selectedTarget||!canActAtNight)return;
   setBusy(true);setError("");
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
-   action:"night_action",player_id:myId,session_token:localStorage.getItem("werewolf_session"),target_player_id:selectedTarget
+   action:"night_action",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),target_player_id:selectedTarget
   }});
   if(e||!data?.submitted){
    let detail=data?.error??e?.message??"Aksi malam gagal dikirim.";
@@ -132,7 +132,7 @@ export default function Home(){
   if(!room||!myId||room.host_player_id!==myId)return;
   setBusy(true);setError("");
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
-   action:"resolve_night",player_id:myId,session_token:localStorage.getItem("werewolf_session")
+   action:"resolve_night",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")
   }});
   if(e||!data?.resolved){
    let detail=data?.error??e?.message??"Malam gagal diselesaikan.";
@@ -148,7 +148,7 @@ export default function Home(){
   if(!room||!myId||!message.trim())return;
   const body=message.trim();
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
-   action:"chat_send",player_id:myId,session_token:localStorage.getItem("werewolf_session"),message:body,channel:"general"
+   action:"chat_send",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),message:body,channel:"general"
   }});
   if(e||!data?.message){setError(e?.message??data?.error??"Pesan gagal dikirim.");return}
   const saved=data.message;
@@ -159,10 +159,10 @@ export default function Home(){
   if(!room||!myId)return;
   setBusy(true);
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
-   action:"leave",player_id:myId,session_token:localStorage.getItem("werewolf_session")
+   action:"leave",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")
   }});
   if(e||!data?.left){setError(e?.message??data?.error??"Gagal keluar dari room.");setBusy(false);return}
-  localStorage.removeItem("werewolf_player_id");localStorage.removeItem("werewolf_session");
+  sessionStorage.removeItem("werewolf_player_id");sessionStorage.removeItem("werewolf_session");
   setRoom(null);setPlayers([]);setMyRole(null);setAllies([]);setSeerResult(null);setNightProgress(null);setMyNightAction(null);setSelectedTarget("");setLastNightSummary("");setPhase("lobby");setMessages([]);
   setBusy(false);
  }
