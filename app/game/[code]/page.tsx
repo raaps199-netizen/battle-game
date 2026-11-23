@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type Player={id:string;name:string;is_alive:boolean;created_at:string};
+type Player={id:string;name:string;is_alive:boolean;is_bot?:boolean;created_at:string};
 type Room={id:string;code:string;status:"lobby"|"active"|"finished";round:number;host_player_id:string|null};
 type Phase="lobby"|"night"|"resolution"|"day"|"voting"|"hunter"|"game_over";
 type Announcement={type:"night"|"vote"|"hunter"|"game_over";kicker:string;title:string;subtitle:string;summary:string};
@@ -26,7 +26,7 @@ export default function GameRoom(){
  const [selectedTarget,setSelectedTarget]=useState(""),[selectedVote,setSelectedVote]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
  const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const [showDawn,setShowDawn]=useState(false),[showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[announcement,setAnnouncement]=useState<Announcement|null>(null);
- const phaseSeen=useRef<Phase|null>(null),announcementSeen=useRef("");
+ const phaseSeen=useRef<Phase|null>(null),announcementSeen=useRef(""),autoResolveRef=useRef("");
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState(""),[chatChannel,setChatChannel]=useState<"general"|"ghost">("general");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
@@ -84,7 +84,35 @@ export default function GameRoom(){
    phaseSeen.current=nextPhase;
    setPhase(nextPhase);
    setNightProgress(data.night_progress??null);
+   setVoteProgress(data.vote_progress??null);
+   setMyVote(data.my_vote??null);
    setLastNightSummary(summary);
+   const autoAction =
+    nextPhase==="night" && data.night_progress &&
+      ((data.night_progress.bot_required??0)>(data.night_progress.bot_submitted??0) ||
+       (data.night_progress.submitted??0)>=(data.night_progress.required??0))
+      ? "resolve_night"
+      : nextPhase==="voting" && data.vote_progress &&
+        ((data.vote_progress.bot_required??0)>(data.vote_progress.bot_submitted??0) ||
+         (data.vote_progress.submitted??0)>=(data.vote_progress.required??0))
+        ? "resolve_votes"
+        : nextPhase==="hunter" && data.hunter_bot_pending
+          ? "resolve_hunter"
+          : null;
+   if(autoAction){
+    const key=autoAction+":"+(data.room?.id??id)+":"+(data.room?.round??1);
+    if(autoResolveRef.current!==key){
+     autoResolveRef.current=key;
+     void supabase.functions.invoke("werewolf-api",{body:{
+      action:autoAction,player_id:playerId,session_token:sessionToken
+     }}).then(({data:result,error:resolveError})=>{
+      if(resolveError||!result?.resolved){autoResolveRef.current="";return;}
+      autoResolveRef.current="";
+      void load(id);
+      void loadChat(id);
+     });
+    }
+   }
    if(data.phase==="night"){
     setMyNightAction(data.my_night_action??null);
     if(data.my_night_action?.target_player_id)setSelectedTarget((current:string)=>current||data.my_night_action.target_player_id);
@@ -167,34 +195,13 @@ export default function GameRoom(){
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"vote",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),target_player_id:selectedVote}});
   if(e||!data?.voted)setError(data?.error??e?.message??"Vote gagal.");else{setNotice("VOTE TERSIMPAN");await load(room.id)}setBusy(false);
  }
- async function resolveVotes(){
-  if(!room||room.host_player_id!==myId)return;setBusy(true);
-  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_votes",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
-  if(e||!data?.resolved)setError(data?.error??e?.message??"Voting gagal.");else{await load(room.id);await fetchRole(myId)}setBusy(false);
- }
  async function hunterAction(){
   if(!room||!selectedTarget)return;setBusy(true);
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"hunter_action",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),target_player_id:selectedTarget}});
-  if(e||!data?.submitted)setError(data?.error??e?.message??"Hunter gagal.");else{setNotice("TARGET HUNTER DIPILIH");await load(room.id)}setBusy(false);
- }
- async function resolveHunter(){
-  if(!room||room.host_player_id!==myId)return;setBusy(true);
-  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_hunter",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
-  if(e||!data?.resolved)setError(data?.error??e?.message??"Hunter gagal diselesaikan.");else{await load(room.id);await fetchRole(myId)}setBusy(false);
- }
- async function resolveNight(){
-  if(!room||!myId||room.host_player_id!==myId)return;
-  setBusy(true);setError("");
-  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
-   action:"resolve_night",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")
-  }});
-  if(e||!data?.resolved){
-   let detail=data?.error??e?.message??"Malam gagal diselesaikan.";
-   try{const response=(e as unknown as {context?:Response})?.context;if(response){const body=await response.clone().json();if(typeof body?.error==="string")detail=body.error}}catch{}
-   setError(detail);await load(room.id);setBusy(false);return;
-  }
-  await load(room.id);
-  await loadChat(room.id);
+  if(e||!data?.submitted){setError(data?.error??e?.message??"Hunter gagal.");setBusy(false);return}
+  const {data:resolved,error:resolveError}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_hunter",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
+  if(resolveError||!resolved?.resolved)setError(resolved?.error??resolveError?.message??"Aksi Hunter gagal diproses.");
+  else{setNotice("TARGET HUNTER DIPILIH");await load(room.id);await fetchRole(myId)}
   setBusy(false);
  }
  async function playAgain(){
@@ -312,7 +319,7 @@ export default function GameRoom(){
       {canActAtNight && me?.is_alive && <div className="selected-target"><span>TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div>}
       {canActAtNight && me?.is_alive && <button className="primary action-submit" onClick={nightAction} disabled={busy || !selectedTarget}>{myNightAction ? "UPDATE NIGHT ACTION" : "CONFIRM ACTION"}</button>}
       <div className="action-progress"><b>{isSpectator ? "SPECTATOR MODE · YOUR ROLE IS NO LONGER ACTIVE" : myNightAction ? "✓ YOUR ACTION IS LOCKED IN" : canActAtNight ? "CHOOSE A PROFILE AROUND THE CIRCLE" : "WAITING FOR SPECIAL ROLES"}</b></div>
-      {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveNight} disabled={busy}>RESOLVE NIGHT · {nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0}</button>}
+
      </div>}
      {phase === "resolution" && <div className="phase-console-inner"><div className="console-title"><span>THE NIGHT UNFOLDS</span><small>SERVER RESOLUTION</small></div><p>Server sedang menghitung serangan, perlindungan, dan siapa yang masih bertahan.</p></div>}
      {phase === "day" && <div className="phase-console-inner">
@@ -326,13 +333,13 @@ export default function GameRoom(){
       <p>{isSpectator ? "Kamu sudah tersingkir dan tidak bisa ikut voting. Hasil tetap terlihat saat host membukanya." : "Ketuk profil pemain yang kamu curigai. Pilihanmu bisa diubah sebelum hasil dibuka."}</p>
       {me?.is_alive && <><div className="selected-target"><span>YOUR VOTE</span><strong>{selectedVoteName || "TAP A PLAYER PROFILE"}</strong></div>
       <button className="primary action-submit" onClick={vote} disabled={busy || !selectedVote}>{myVote ? "CHANGE VOTE" : "CAST VOTE"}</button></>}
-      {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveVotes} disabled={busy}>REVEAL VOTES</button>}
+
      </div>}
      {phase === "hunter" && <div className="phase-console-inner">
       <div className="console-title"><span>HUNTER'S LAST SHOT</span><small>FINAL ABILITY</small></div>
       <p>{myRole === "HUNTER" && !!me && !me.is_alive ? "Kamu adalah Hunter. Gunakan kemampuan terakhirmu untuk memilih satu pemain hidup." : isSpectator ? "Kamu telah gugur. Saksikan kemampuan terakhir Hunter dari luar permainan." : "Hunter sedang menentukan target terakhirnya."}</p>
       {myRole === "HUNTER" && !!me && !me.is_alive && <><div className="selected-target"><span>LAST TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget || busy}>FIRE</button></>}
-      {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveHunter} disabled={busy}>RESOLVE HUNTER</button>}
+
      </div>}
      {phase === "game_over" && <div className="phase-console-inner"><div className="console-title"><span>GAME OVER</span><small>THE VILLAGE IS QUIET</small></div><p>{lastNightSummary || "Permainan selesai."}</p></div>}
     </div>
