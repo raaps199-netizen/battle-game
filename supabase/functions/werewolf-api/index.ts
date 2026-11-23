@@ -221,10 +221,10 @@ Deno.serve(async (req: Request) => {
       if (playersError) throw playersError;
       if (stateError) throw stateError;
 
-      let night_progress = null;
+      let night_progress: any = null;
       let my_night_action = null;
       if (state.phase === "night") {
-        const [{ data: roleRows, error: roleError }, { data: actionRows, error: actionError }] =
+        const [{ data: roleRows, error: roleError }, { data: initialActions, error: actionError }] =
           await Promise.all([
             db.from("werewolf_roles")
               .select("player_id,role")
@@ -237,29 +237,125 @@ Deno.serve(async (req: Request) => {
         if (roleError) throw roleError;
         if (actionError) throw actionError;
 
-        const livingIds = new Set((players ?? []).filter((p: any) => p.is_alive).map((p: any) => p.id));
+        const livingPlayers = (players ?? []).filter((p: any) => p.is_alive);
+        const livingIds = new Set(livingPlayers.map((p: any) => p.id));
+        const playerById = new Map((players ?? []).map((p: any) => [p.id, p]));
+        const roleById = new Map((roleRows ?? []).map((r: any) => [r.player_id, r.role]));
+        const actionByPlayer = new Map((initialActions ?? []).map((a: any) => [a.player_id, a]));
         const requiredActors = (roleRows ?? []).filter((r: any) =>
           livingIds.has(r.player_id) && ["WEREWOLF", "SEER", "DOCTOR"].includes(r.role)
         );
+
+        for (const actor of requiredActors) {
+          const actorPlayer: any = playerById.get(actor.player_id);
+          if (!actorPlayer?.is_bot || actionByPlayer.has(actor.player_id)) continue;
+
+          let candidates = livingPlayers.filter((p: any) => p.id !== actor.player_id);
+          if (actor.role === "WEREWOLF") {
+            candidates = candidates.filter((p: any) => roleById.get(p.id) !== "WEREWOLF");
+          }
+          if (actor.role === "DOCTOR" && room.round > 1) {
+            const { data: previous, error: previousError } = await db.from("night_actions")
+              .select("target_player_id")
+              .eq("room_id", player.room_id)
+              .eq("player_id", actor.player_id)
+              .eq("night", room.round - 1)
+              .eq("action_type", "DOCTOR_PROTECT")
+              .maybeSingle();
+            if (previousError) throw previousError;
+            candidates = candidates.filter((p: any) => p.id !== previous?.target_player_id);
+          }
+          if (!candidates.length) continue;
+
+          const target = candidates[randomInt(candidates.length)];
+          const actionType = actor.role === "WEREWOLF" ? "WOLF_KILL"
+            : actor.role === "SEER" ? "SEER_CHECK" : "DOCTOR_PROTECT";
+          const { error: botActionError } = await db.from("night_actions").upsert({
+            room_id: player.room_id,
+            player_id: actor.player_id,
+            night: room.round,
+            action_type: actionType,
+            target_player_id: target.id,
+          }, { onConflict: "room_id,player_id,night" });
+          if (botActionError) throw botActionError;
+        }
+
+        const { data: actionRows, error: refreshedActionsError } = await db.from("night_actions")
+          .select("player_id,action_type,target_player_id")
+          .eq("room_id", player.room_id)
+          .eq("night", room.round);
+        if (refreshedActionsError) throw refreshedActionsError;
+
         const submittedIds = new Set((actionRows ?? []).map((a: any) => a.player_id));
+        const botActorIds = new Set(requiredActors
+          .filter((r: any) => (playerById.get(r.player_id) as any)?.is_bot)
+          .map((r: any) => r.player_id));
         night_progress = {
           submitted: requiredActors.filter((r: any) => submittedIds.has(r.player_id)).length,
           required: requiredActors.length,
+          bot_required: botActorIds.size,
+          bot_submitted: [...botActorIds].filter((id: string) => submittedIds.has(id)).length,
         };
         my_night_action = (actionRows ?? []).find((a: any) => a.player_id === player.id) ?? null;
       }
 
-      let vote_progress = null;
+      let vote_progress: any = null;
       let my_vote = null;
       if (["day", "voting"].includes(state.phase)) {
-        const { data: votes, error: votesError } = await db.from("votes")
-          .select("voter_id,target_player_id").eq("room_id", player.room_id).eq("day", room.round);
+        let { data: votes, error: votesError } = await db.from("votes")
+          .select("voter_id,target_player_id")
+          .eq("room_id", player.room_id)
+          .eq("day", room.round);
         if (votesError) throw votesError;
-        const livingIds = new Set((players ?? []).filter((p: any) => p.is_alive).map((p: any) => p.id));
-        const required = (players ?? []).filter((p: any) => p.is_alive).length;
-        const validVotes = (votes ?? []).filter((v: any) => livingIds.has(v.voter_id));
-        vote_progress = { submitted: validVotes.length, required };
+
+        const livingPlayers = (players ?? []).filter((p: any) => p.is_alive);
+        const livingIds = new Set(livingPlayers.map((p: any) => p.id));
+
+        if (state.phase === "voting") {
+          for (const bot of livingPlayers.filter((p: any) => p.is_bot)) {
+            const alreadyVoted = (votes ?? []).some((v: any) => v.voter_id === bot.id);
+            if (alreadyVoted) continue;
+            const candidates = livingPlayers.filter((p: any) => p.id !== bot.id);
+            if (!candidates.length) continue;
+            const target = candidates[randomInt(candidates.length)];
+            const { error: botVoteError } = await db.from("votes").upsert({
+              room_id: player.room_id,
+              voter_id: bot.id,
+              target_player_id: target.id,
+              day: room.round,
+            }, { onConflict: "room_id,voter_id,day" });
+            if (botVoteError) throw botVoteError;
+          }
+          const refreshed = await db.from("votes")
+            .select("voter_id,target_player_id")
+            .eq("room_id", player.room_id)
+            .eq("day", room.round);
+          if (refreshed.error) throw refreshed.error;
+          votes = refreshed.data ?? [];
+        }
+
+        const validVotes = (votes ?? []).filter((v: any) => livingIds.has(v.voter_id) && livingIds.has(v.target_player_id));
+        const botIds = new Set(livingPlayers.filter((p: any) => p.is_bot).map((p: any) => p.id));
+        vote_progress = {
+          submitted: new Set(validVotes.map((v: any) => v.voter_id)).size,
+          required: livingPlayers.length,
+          bot_required: botIds.size,
+          bot_submitted: validVotes.filter((v: any) => botIds.has(v.voter_id)).length,
+        };
         my_vote = validVotes.find((v: any) => v.voter_id === player.id) ?? null;
+      }
+
+      let hunter_bot_pending = false;
+      if (state.phase === "hunter") {
+        const { data: pendingHunter, error: pendingError } = await db.from("actions")
+          .select("player_id")
+          .eq("room_id", player.room_id)
+          .eq("action_type", "HUNTER_PENDING")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (pendingError) throw pendingError;
+        hunter_bot_pending = !!(players ?? []).find((p: any) => p.id === pendingHunter?.player_id && p.is_bot);
       }
 
       return json({
@@ -271,6 +367,7 @@ Deno.serve(async (req: Request) => {
         my_night_action,
         vote_progress,
         my_vote,
+        hunter_bot_pending,
       });
     }
 
@@ -540,13 +637,40 @@ Deno.serve(async (req: Request) => {
       if (!player) return json({ error: "Invalid session" }, 403);
 
       const { data: room, error: roomError } = await db.from("rooms")
-        .select("id,status,round,host_player_id")
+        .select("id,status,round")
         .eq("id", player.room_id)
         .single();
       if (roomError) throw roomError;
-      if (room.status !== "active" || room.host_player_id !== player.id) {
-        return json({ error: "Only the host can resolve an active night" }, 403);
-      }
+      if (room.status !== "active") return json({ error: "The night is not active" }, 409);
+
+      const [{ data: livingPlayers, error: livingError }, { data: allPlayers, error: allPlayersError }, { data: roleRows, error: rolesError }, { data: actionRows, error: actionsError }] =
+        await Promise.all([
+          db.from("players").select("id,name,is_alive,is_bot").eq("room_id", player.room_id).eq("is_alive", true),
+          db.from("players").select("id,name,is_alive,is_bot").eq("room_id", player.room_id),
+          db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id),
+          db.from("night_actions")
+            .select("player_id,action_type,target_player_id")
+            .eq("room_id", player.room_id)
+            .eq("night", room.round),
+        ]);
+      if (livingError) throw livingError;
+      if (allPlayersError) throw allPlayersError;
+      if (rolesError) throw rolesError;
+      if (actionsError) throw actionsError;
+
+      const livingIds = new Set((livingPlayers ?? []).map((p: any) => p.id));
+      const roleById = new Map((roleRows ?? []).map((r: any) => [r.player_id, r.role]));
+      const requiredActors = (roleRows ?? []).filter((r: any) =>
+        livingIds.has(r.player_id) && ["WEREWOLF", "SEER", "DOCTOR"].includes(r.role)
+      );
+      const actionsByPlayer = new Map((actionRows ?? []).map((a: any) => [a.player_id, a]));
+      const incomplete = requiredActors.some((r: any) => {
+        const action: any = actionsByPlayer.get(r.player_id);
+        const expected = r.role === "WEREWOLF" ? "WOLF_KILL"
+          : r.role === "SEER" ? "SEER_CHECK" : "DOCTOR_PROTECT";
+        return !action || action.action_type !== expected || !action.target_player_id;
+      });
+      if (incomplete) return json({ error: "Waiting for every living night role to choose" }, 409);
 
       const { data: claimed, error: claimError } = await db.from("game_states")
         .update({ phase: "resolution", updated_at: new Date().toISOString() })
@@ -558,60 +682,6 @@ Deno.serve(async (req: Request) => {
       if (!claimed) return json({ error: "Night is already being resolved or has ended" }, 409);
 
       try {
-        const [{ data: livingPlayers, error: livingError }, { data: allPlayers, error: allPlayersError }, { data: roleRows, error: rolesError }, { data: actionRows, error: actionsError }] =
-          await Promise.all([
-            db.from("players").select("id,name").eq("room_id", player.room_id).eq("is_alive", true),
-            db.from("players").select("id,name,is_alive").eq("room_id", player.room_id),
-            db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id),
-            db.from("night_actions")
-              .select("player_id,action_type,target_player_id")
-              .eq("room_id", player.room_id)
-              .eq("night", room.round),
-          ]);
-        if (livingError) throw livingError;
-        if (allPlayersError) throw allPlayersError;
-        if (rolesError) throw rolesError;
-        if (actionsError) throw actionsError;
-
-        const livingIds = new Set((livingPlayers ?? []).map((p: any) => p.id));
-        const botPlayers = (livingPlayers ?? []).filter((p: any) => p.is_bot);
-        for (const bot of botPlayers as any[]) {
-          const botRole = roleById.get(bot.id);
-          if (!["WEREWOLF", "SEER", "DOCTOR"].includes(botRole)) continue;
-          if (actionsByPlayer.get(bot.id)) continue;
-          let candidates = (livingPlayers ?? []).filter((p: any) => p.is_alive);
-          if (botRole === "WEREWOLF") candidates = candidates.filter((p: any) => roleById.get(p.id) !== "WEREWOLF");
-          if (botRole === "SEER") candidates = candidates.filter((p: any) => p.id !== bot.id);
-          if (botRole === "DOCTOR" && room.round > 1) {
-            const { data: previous } = await db.from("night_actions").select("target_player_id").eq("room_id", player.room_id).eq("player_id", bot.id).eq("night", room.round - 1).eq("action_type", "DOCTOR_PROTECT").maybeSingle();
-            candidates = candidates.filter((p: any) => p.id !== previous?.target_player_id);
-          }
-          if (!candidates.length) continue;
-          const target = candidates[randomInt(candidates.length)];
-          const actionType = botRole === "WEREWOLF" ? "WOLF_KILL" : botRole === "SEER" ? "SEER_CHECK" : "DOCTOR_PROTECT";
-          const { error: botActionError } = await db.from("night_actions").upsert({ room_id: player.room_id, player_id: bot.id, night: room.round, action_type: actionType, target_player_id: target.id }, { onConflict: "room_id,player_id,night" });
-          if (botActionError) throw botActionError;
-        }
-        const roleById = new Map((roleRows ?? []).map((r: any) => [r.player_id, r.role]));
-        const requiredActors = (roleRows ?? []).filter((r: any) =>
-          livingIds.has(r.player_id) && ["WEREWOLF", "SEER", "DOCTOR"].includes(r.role)
-        );
-        const actionsByPlayer = new Map((actionRows ?? []).map((a: any) => [a.player_id, a]));
-        const incomplete = requiredActors.some((r: any) => {
-          const action: any = actionsByPlayer.get(r.player_id);
-          const expected = r.role === "WEREWOLF" ? "WOLF_KILL"
-            : r.role === "SEER" ? "SEER_CHECK" : "DOCTOR_PROTECT";
-          return !action || action.action_type !== expected || !action.target_player_id;
-        });
-
-        if (incomplete) {
-          await db.from("game_states")
-            .update({ phase: "night", updated_at: new Date().toISOString() })
-            .eq("room_id", player.room_id)
-            .eq("phase", "resolution");
-          return json({ error: "Wait until every living night role has submitted an action" }, 409);
-        }
-
         const wolfVotes = new Map<string, number>();
         for (const action of (actionRows ?? []) as any[]) {
           if (action.action_type !== "WOLF_KILL" || !livingIds.has(action.player_id)) continue;
@@ -632,9 +702,10 @@ Deno.serve(async (req: Request) => {
         const protectedId = doctorAction?.target_player_id ?? null;
         const victimId = attackedId && attackedId !== protectedId ? attackedId : null;
 
-        let victimName: string | null = null;
+        const victimName = victimId
+          ? (livingPlayers ?? []).find((p: any) => p.id === victimId)?.name ?? null
+          : null;
         if (victimId) {
-          victimName = (livingPlayers ?? []).find((p: any) => p.id === victimId)?.name ?? null;
           const { error: deathError } = await db.from("players")
             .update({ is_alive: false, hp: 0 })
             .eq("id", victimId)
@@ -648,8 +719,6 @@ Deno.serve(async (req: Request) => {
         const othersAlive = aliveAfter.length - wolvesAlive;
         let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
         if (wolvesAlive === 0) winner = "VILLAGERS";
-        // Keep the match going while there is still at least one non-werewolf alive.
-        // This makes majority situations playable instead of ending the game immediately.
         else if (othersAlive === 0) winner = "WEREWOLVES";
 
         let summary = victimName
@@ -721,51 +790,141 @@ Deno.serve(async (req: Request) => {
     if (body.action === "resolve_votes") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
-      const { data: room, error: roomError } = await db.from("rooms").select("id,status,round,host_player_id").eq("id", player.room_id).single();
+      const { data: room, error: roomError } = await db.from("rooms")
+        .select("id,status,round")
+        .eq("id", player.room_id)
+        .single();
       if (roomError) throw roomError;
-      const { data: state } = await db.from("game_states").select("phase").eq("room_id", player.room_id).single();
-      if (!room || room.status !== "active" || room.host_player_id !== player.id || state?.phase !== "voting") return json({ error: "Only the host can resolve voting" }, 403);
-      const [{ data: living }, { data: votes }, { data: roles }] = await Promise.all([
-        db.from("players").select("id,name,is_alive").eq("room_id", player.room_id).eq("is_alive", true),
+      const { data: state, error: stateError } = await db.from("game_states")
+        .select("phase")
+        .eq("room_id", player.room_id)
+        .single();
+      if (stateError) throw stateError;
+      if (!room || room.status !== "active" || state?.phase !== "voting") {
+        return json({ error: "Voting is not active" }, 409);
+      }
+
+      const [{ data: living, error: livingError }, { data: initialVotes, error: votesError }, { data: roles, error: rolesError }] = await Promise.all([
+        db.from("players").select("id,name,is_alive,is_bot").eq("room_id", player.room_id).eq("is_alive", true),
         db.from("votes").select("voter_id,target_player_id").eq("room_id", player.room_id).eq("day", room.round),
         db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id),
       ]);
+      if (livingError) throw livingError;
+      if (votesError) throw votesError;
+      if (rolesError) throw rolesError;
+
       const livingIds = new Set((living ?? []).map((p: any) => p.id));
-      for (const bot of (living ?? []).filter((p: any) => p.is_bot) as any[]) {
-        const existing = (votes ?? []).find((v: any) => v.voter_id === bot.id);
-        if (existing) continue;
+      const existingVoters = new Set((initialVotes ?? []).map((v: any) => v.voter_id));
+      for (const bot of (living ?? []).filter((p: any) => p.is_bot)) {
+        if (existingVoters.has(bot.id)) continue;
         const candidates = (living ?? []).filter((p: any) => p.id !== bot.id);
         if (!candidates.length) continue;
         const target = candidates[randomInt(candidates.length)];
-        const { error: botVoteError } = await db.from("votes").insert({ room_id: player.room_id, voter_id: bot.id, target_player_id: target.id, day: room.round });
-        if (botVoteError && botVoteError.code !== "23505") throw botVoteError;
+        const { error: botVoteError } = await db.from("votes").upsert({
+          room_id: player.room_id,
+          voter_id: bot.id,
+          target_player_id: target.id,
+          day: room.round,
+        }, { onConflict: "room_id,voter_id,day" });
+        if (botVoteError) throw botVoteError;
       }
-      const { data: refreshedVotes } = await db.from("votes").select("voter_id,target_player_id").eq("room_id", player.room_id).eq("day", room.round);
-      const allVotes = refreshedVotes ?? votes ?? [];
-      const validVotes = allVotes.filter((v: any) => livingIds.has(v.voter_id) && livingIds.has(v.target_player_id));
-      if (validVotes.length < (living ?? []).length) return json({ error: "Tunggu semua pemain hidup selesai voting" }, 409);
-      const tally = new Map<string, number>();
-      for (const v of validVotes) tally.set(v.target_player_id, (tally.get(v.target_player_id) ?? 0) + 1);
-      let eliminatedId: string | null = null;
-      if (tally.size) { const high = Math.max(...tally.values()); const leaders = [...tally.entries()].filter(([, n]) => n === high); if (leaders.length === 1) eliminatedId = leaders[0][0]; }
-      let summary = eliminatedId ? `${(living ?? []).find((p: any) => p.id === eliminatedId)?.name ?? "Pemain"} mendapat suara terbanyak dan tersingkir.` : "Voting seri. Tidak ada yang tersingkir.";
-      if (eliminatedId) await db.from("players").update({ is_alive: false, hp: 0 }).eq("id", eliminatedId).eq("room_id", player.room_id).eq("is_alive", true);
-      const roleById = new Map((roles ?? []).map((r: any) => [r.player_id, r.role]));
-      const remaining = (living ?? []).filter((p: any) => p.id !== eliminatedId);
-      const wolvesAlive = remaining.filter((p: any) => roleById.get(p.id) === "WEREWOLF").length;
-      const othersAlive = remaining.length - wolvesAlive;
-      let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
-      if (wolvesAlive === 0) winner = "VILLAGERS"; else if (othersAlive === 0) winner = "WEREWOLVES";
-      if (eliminatedId && roleById.get(eliminatedId) === "HUNTER") {
-        await db.from("actions").insert({ room_id: player.room_id, player_id: eliminatedId, action_type: "HUNTER_PENDING", round: room.round, action_data: { return_phase: winner ? "game_over" : "night" } });
-        await db.from("game_states").update({ phase: "hunter", last_night_summary: summary, updated_at: new Date().toISOString() }).eq("room_id", player.room_id).eq("phase", "voting");
-        return json({ resolved: true, summary, hunter: true, winner, phase: "hunter" });
+
+      const { data: refreshedVotes, error: refreshedVotesError } = await db.from("votes")
+        .select("voter_id,target_player_id")
+        .eq("room_id", player.room_id)
+        .eq("day", room.round);
+      if (refreshedVotesError) throw refreshedVotesError;
+      const validVotes = (refreshedVotes ?? []).filter((v: any) =>
+        livingIds.has(v.voter_id) && livingIds.has(v.target_player_id)
+      );
+      if (new Set(validVotes.map((v: any) => v.voter_id)).size < (living ?? []).length) {
+        return json({ error: "Waiting for every living player to vote" }, 409);
       }
-      if (winner) { summary += winner === "WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!"; await db.from("rooms").update({ status: "finished" }).eq("id", player.room_id).eq("status", "active"); }
-      else await db.from("rooms").update({ round: room.round + 1 }).eq("id", player.room_id);
-      const nextPhase = winner ? "game_over" : "night";
-      await db.from("game_states").update({ phase: nextPhase, last_night_summary: summary, resolution_version: 1, updated_at: new Date().toISOString() }).eq("room_id", player.room_id).eq("phase", "voting");
-      return json({ resolved: true, summary, winner, phase: nextPhase });
+
+      const { data: claimed, error: claimError } = await db.from("game_states")
+        .update({ phase: "resolution", updated_at: new Date().toISOString() })
+        .eq("room_id", player.room_id)
+        .eq("phase", "voting")
+        .select("room_id")
+        .maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) return json({ error: "Voting is already being resolved" }, 409);
+
+      try {
+        const tally = new Map<string, number>();
+        for (const v of validVotes) tally.set(v.target_player_id, (tally.get(v.target_player_id) ?? 0) + 1);
+        let eliminatedId: string | null = null;
+        if (tally.size) {
+          const high = Math.max(...tally.values());
+          const leaders = [...tally.entries()].filter(([, n]) => n === high);
+          if (leaders.length === 1) eliminatedId = leaders[0][0];
+        }
+
+        let summary = eliminatedId
+          ? ((living ?? []).find((p: any) => p.id === eliminatedId)?.name ?? "Pemain") + " mendapat suara terbanyak dan tersingkir."
+          : "Voting seri. Tidak ada yang tersingkir.";
+        if (eliminatedId) {
+          const { error: eliminateError } = await db.from("players")
+            .update({ is_alive: false, hp: 0 })
+            .eq("id", eliminatedId)
+            .eq("room_id", player.room_id)
+            .eq("is_alive", true);
+          if (eliminateError) throw eliminateError;
+        }
+
+        const roleById = new Map((roles ?? []).map((r: any) => [r.player_id, r.role]));
+        const remaining = (living ?? []).filter((p: any) => p.id !== eliminatedId);
+        const wolvesAlive = remaining.filter((p: any) => roleById.get(p.id) === "WEREWOLF").length;
+        const othersAlive = remaining.length - wolvesAlive;
+        let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
+        if (wolvesAlive === 0) winner = "VILLAGERS";
+        else if (othersAlive === 0) winner = "WEREWOLVES";
+
+        if (eliminatedId && roleById.get(eliminatedId) === "HUNTER") {
+          const { error: pendingError } = await db.from("actions").insert({
+            room_id: player.room_id,
+            player_id: eliminatedId,
+            action_type: "HUNTER_PENDING",
+            round: room.round,
+            action_data: { return_phase: winner ? "game_over" : "night" },
+          });
+          if (pendingError) throw pendingError;
+          const { error: hunterPhaseError } = await db.from("game_states")
+            .update({ phase: "hunter", last_night_summary: summary, updated_at: new Date().toISOString() })
+            .eq("room_id", player.room_id)
+            .eq("phase", "resolution");
+          if (hunterPhaseError) throw hunterPhaseError;
+          return json({ resolved: true, summary, hunter: true, winner, phase: "hunter" });
+        }
+
+        if (winner) {
+          summary += winner === "WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!";
+          const { error: finishError } = await db.from("rooms")
+            .update({ status: "finished" })
+            .eq("id", player.room_id)
+            .eq("status", "active");
+          if (finishError) throw finishError;
+        } else {
+          const { error: roundError } = await db.from("rooms")
+            .update({ round: room.round + 1 })
+            .eq("id", player.room_id);
+          if (roundError) throw roundError;
+        }
+
+        const nextPhase = winner ? "game_over" : "night";
+        const { error: phaseError } = await db.from("game_states")
+          .update({ phase: nextPhase, last_night_summary: summary, resolution_version: 1, updated_at: new Date().toISOString() })
+          .eq("room_id", player.room_id)
+          .eq("phase", "resolution");
+        if (phaseError) throw phaseError;
+        return json({ resolved: true, summary, winner, phase: nextPhase });
+      } catch (error) {
+        await db.from("game_states")
+          .update({ phase: "voting", updated_at: new Date().toISOString() })
+          .eq("room_id", player.room_id)
+          .eq("phase", "resolution");
+        throw error;
+      }
     }
 
     if (body.action === "hunter_action") {
@@ -785,39 +944,144 @@ Deno.serve(async (req: Request) => {
     if (body.action === "resolve_hunter") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
-      const { data: room } = await db.from("rooms").select("id,status,round,host_player_id").eq("id", player.room_id).single();
-      if (!room || room.host_player_id !== player.id || room.status !== "active") return json({ error: "Only the host can resolve Hunter" }, 403);
-      let { data: hunterAction } = await db.from("actions").select("player_id,target_player_id").eq("room_id", player.room_id).eq("action_type","HUNTER_SHOT").order("created_at",{ascending:false}).limit(1).maybeSingle();
-      if (!hunterAction) {
-        const { data: pendingHunter } = await db.from("actions").select("player_id").eq("room_id", player.room_id).eq("action_type","HUNTER_PENDING").order("created_at",{ascending:false}).limit(1).maybeSingle();
-        if (pendingHunter) {
-          const { data: hunterPlayer } = await db.from("players").select("is_bot").eq("id", pendingHunter.player_id).single();
-          if (hunterPlayer?.is_bot) {
-            const { data: targets } = await db.from("players").select("id").eq("room_id", player.room_id).eq("is_alive", true).neq("id", pendingHunter.player_id);
-            if (targets?.length) {
-              const target = targets[randomInt(targets.length)];
-              const { data: insertedHunter } = await db.from("actions").insert({ room_id: player.room_id, player_id: pendingHunter.player_id, target_player_id: target.id, action_type:"HUNTER_SHOT", round:room.round }).select("player_id,target_player_id").single();
-              hunterAction = insertedHunter;
-            }
-          }
-        }
+      const { data: room, error: roomError } = await db.from("rooms")
+        .select("id,status,round")
+        .eq("id", player.room_id)
+        .single();
+      if (roomError) throw roomError;
+      if (!room || room.status !== "active") return json({ error: "The game is not active" }, 409);
+
+      const { data: pendingHunter, error: pendingError } = await db.from("actions")
+        .select("player_id,action_data")
+        .eq("room_id", player.room_id)
+        .eq("action_type", "HUNTER_PENDING")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (pendingError) throw pendingError;
+      if (!pendingHunter) return json({ resolved: false, waiting: true });
+
+      let { data: hunterAction, error: hunterActionError } = await db.from("actions")
+        .select("player_id,target_player_id")
+        .eq("room_id", player.room_id)
+        .eq("player_id", pendingHunter.player_id)
+        .eq("action_type", "HUNTER_SHOT")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (hunterActionError) throw hunterActionError;
+
+      const { data: hunterPlayer, error: hunterPlayerError } = await db.from("players")
+        .select("is_bot")
+        .eq("id", pendingHunter.player_id)
+        .single();
+      if (hunterPlayerError) throw hunterPlayerError;
+
+      const { data: state, error: stateError } = await db.from("game_states")
+        .select("phase")
+        .eq("room_id", player.room_id)
+        .single();
+      if (stateError) throw stateError;
+      if (state?.phase !== "hunter") return json({ resolved: false, waiting: true });
+
+      if (!hunterAction && !hunterPlayer?.is_bot) {
+        return json({ resolved: false, waiting: true });
       }
-      if (!hunterAction?.target_player_id) return json({ error: "Hunter has not chosen a target" }, 409);
-      const { data: target } = await db.from("players").select("id,name,is_alive").eq("id", hunterAction.target_player_id).eq("room_id", player.room_id).single();
-      if (!target?.is_alive) return json({ error: "Hunter target is no longer alive" }, 409);
-      await db.from("players").update({ is_alive: false, hp: 0 }).eq("id", target.id).eq("is_alive", true);
-      const [{ data: roles }, { data: alive }] = await Promise.all([db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id), db.from("players").select("id,is_alive").eq("room_id", player.room_id).eq("is_alive", true)]);
-      const roleById = new Map((roles ?? []).map((r:any)=>[r.player_id,r.role]));
-      const wolves = (alive ?? []).filter((p:any)=>roleById.get(p.id)==="WEREWOLF").length; const others = (alive ?? []).length-wolves;
-      let winner: "WEREWOLVES"|"VILLAGERS"|null = null; if(wolves===0) winner="VILLAGERS"; else if(others===0) winner="WEREWOLVES";
-      const { data: pending } = await db.from("actions").select("action_data").eq("room_id",player.room_id).eq("player_id",hunterAction.player_id).eq("action_type","HUNTER_PENDING").order("created_at",{ascending:false}).limit(1).maybeSingle();
-      const returnPhase = pending?.action_data?.return_phase === "night" ? "night" : "day";
-      let summary = `${target.name} ditembak Hunter dan tersingkir.`; if(winner) summary += winner==="WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!";
-      const nextPhase = winner ? "game_over" : returnPhase;
-      if(winner) await db.from("rooms").update({status:"finished"}).eq("id",player.room_id).eq("status","active"); else if(returnPhase==="night") await db.from("rooms").update({round:room.round+1}).eq("id",player.room_id);
-      await db.from("game_states").update({phase:nextPhase,last_night_summary:summary,updated_at:new Date().toISOString()}).eq("room_id",player.room_id).eq("phase","hunter");
-      return json({resolved:true,summary,winner,phase:nextPhase});
+
+      const { data: claimed, error: claimError } = await db.from("game_states")
+        .update({ phase: "resolution", updated_at: new Date().toISOString() })
+        .eq("room_id", player.room_id)
+        .eq("phase", "hunter")
+        .select("room_id")
+        .maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) return json({ resolved: false, waiting: true });
+
+      try {
+        if (!hunterAction && hunterPlayer?.is_bot) {
+          const { data: targets, error: targetsError } = await db.from("players")
+            .select("id")
+            .eq("room_id", player.room_id)
+            .eq("is_alive", true)
+            .neq("id", pendingHunter.player_id);
+          if (targetsError) throw targetsError;
+          if (!targets?.length) throw new Error("No living target is available for the Hunter");
+          const target = targets[randomInt(targets.length)];
+          const { data: insertedHunter, error: insertHunterError } = await db.from("actions")
+            .insert({
+              room_id: player.room_id,
+              player_id: pendingHunter.player_id,
+              target_player_id: target.id,
+              action_type: "HUNTER_SHOT",
+              round: room.round,
+            })
+            .select("player_id,target_player_id")
+            .single();
+          if (insertHunterError) throw insertHunterError;
+          hunterAction = insertedHunter;
+        }
+
+        if (!hunterAction?.target_player_id) throw new Error("Hunter has not chosen a target");
+        const { data: target, error: targetError } = await db.from("players")
+          .select("id,name,is_alive")
+          .eq("id", hunterAction.target_player_id)
+          .eq("room_id", player.room_id)
+          .single();
+        if (targetError) throw targetError;
+        if (!target?.is_alive) throw new Error("Hunter target is no longer alive");
+
+        const { error: deathError } = await db.from("players")
+          .update({ is_alive: false, hp: 0 })
+          .eq("id", target.id)
+          .eq("is_alive", true);
+        if (deathError) throw deathError;
+
+        const [{ data: roles, error: rolesError }, { data: alive, error: aliveError }] = await Promise.all([
+          db.from("werewolf_roles").select("player_id,role").eq("room_id", player.room_id),
+          db.from("players").select("id,is_alive").eq("room_id", player.room_id).eq("is_alive", true),
+        ]);
+        if (rolesError) throw rolesError;
+        if (aliveError) throw aliveError;
+        const roleById = new Map((roles ?? []).map((r: any) => [r.player_id, r.role]));
+        const wolves = (alive ?? []).filter((p: any) => roleById.get(p.id) === "WEREWOLF").length;
+        const others = (alive ?? []).length - wolves;
+        let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
+        if (wolves === 0) winner = "VILLAGERS";
+        else if (others === 0) winner = "WEREWOLVES";
+
+        const returnPhase = pendingHunter.action_data?.return_phase === "night" ? "night" : "day";
+        let summary = target.name + " ditembak Hunter dan tersingkir.";
+        if (winner) summary += winner === "WEREWOLVES" ? " Tim Werewolf menang!" : " Tim Villager menang!";
+        const nextPhase = winner ? "game_over" : returnPhase;
+
+        if (winner) {
+          const { error: finishError } = await db.from("rooms")
+            .update({ status: "finished" })
+            .eq("id", player.room_id)
+            .eq("status", "active");
+          if (finishError) throw finishError;
+        } else if (returnPhase === "night") {
+          const { error: roundError } = await db.from("rooms")
+            .update({ round: room.round + 1 })
+            .eq("id", player.room_id);
+          if (roundError) throw roundError;
+        }
+
+        const { error: phaseError } = await db.from("game_states")
+          .update({ phase: nextPhase, last_night_summary: summary, updated_at: new Date().toISOString() })
+          .eq("room_id", player.room_id)
+          .eq("phase", "resolution");
+        if (phaseError) throw phaseError;
+        return json({ resolved: true, summary, winner, phase: nextPhase });
+      } catch (error) {
+        await db.from("game_states")
+          .update({ phase: "hunter", updated_at: new Date().toISOString() })
+          .eq("room_id", player.room_id)
+          .eq("phase", "resolution");
+        throw error;
+      }
     }
+
     if (body.action === "chat_history") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
