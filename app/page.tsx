@@ -23,7 +23,8 @@ export default function Home(){
  const [allies,setAllies]=useState<{id:string;name:string}[]>([]),[seerResult,setSeerResult]=useState<{player_name:string;role:string}|null>(null);
  const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null);
  const [selectedTarget,setSelectedTarget]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
- const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);\n const [showIntro,setShowIntro]=useState(false);
+ const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [showIntro,setShowIntro]=useState(false);
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
@@ -204,7 +205,8 @@ export default function Home(){
   <aside className="panel chat"><div className="panel-head">VILLAGE CHAT <span>LIVE</span></div><div className="messages">{messages.map(m=><div className="msg" key={m.id}><b>{players.find(p=>p.id===m.player_id)?.name??"PLAYER"}</b><p>{m.body}</p></div>)}{!messages.length&&<div className="empty">Belum ada pesan.</div>}</div>
    {(phase==="lobby"||phase==="day"||phase==="voting")?<div className="chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan..." maxLength={500}/><button onClick={send}>SEND</button></div>:<div className="chat-closed">Village chat ditutup selama malam.</div>}
   </aside>
- </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>{room.host_player_id===myId?"HOST":"PLAYER"} · REALTIME CONNECTED</span></footer>\n {showIntro&&<div className="intro-overlay"><div className="intro-card"><div className="intro-mark">☾</div><div className="eyebrow">WEREWOLF // ONLINE</div><h2>THE NIGHT BEGINS</h2><p>Desa sudah tertidur. Di antara kalian ada Werewolf yang sedang mencari korban.</p><div className="intro-rules"><div><b>01</b><span>Jaga identitasmu tetap rahasia.</span></div><div><b>02</b><span>Gunakan kemampuanmu saat malam.</span></div><div><b>03</b><span>Saat siang, diskusikan siapa yang mencurigakan.</span></div></div><div className="intro-role"><span>YOUR SECRET ROLE</span><strong>{role?.icon} {role?.name??"..."}</strong><small>{role?.desc??"Role sedang disiapkan oleh server."}</small></div><button className="primary intro-button" onClick={()=>setShowIntro(false)}>ENTER THE NIGHT</button></div></div>}
+ </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>{room.host_player_id===myId?"HOST":"PLAYER"} · REALTIME CONNECTED</span></footer>
+ {showIntro&&<div className="intro-overlay"><div className="intro-card"><div className="intro-mark">☾</div><div className="eyebrow">WEREWOLF // ONLINE</div><h2>THE NIGHT BEGINS</h2><p>Desa sudah tertidur. Di antara kalian ada Werewolf yang sedang mencari korban.</p><div className="intro-rules"><div><b>01</b><span>Jaga identitasmu tetap rahasia.</span></div><div><b>02</b><span>Gunakan kemampuanmu saat malam.</span></div><div><b>03</b><span>Saat siang, diskusikan siapa yang mencurigakan.</span></div></div><div className="intro-role"><span>YOUR SECRET ROLE</span><strong>{role?.icon} {role?.name??"..."}</strong><small>{role?.desc??"Role sedang disiapkan oleh server."}</small></div><button className="primary intro-button" onClick={()=>setShowIntro(false)}>ENTER THE NIGHT</button></div></div>}
  {notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
  </main>
 }
