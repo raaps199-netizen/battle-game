@@ -609,7 +609,9 @@ Deno.serve(async (req: Request) => {
         const othersAlive = aliveAfter.length - wolvesAlive;
         let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
         if (wolvesAlive === 0) winner = "VILLAGERS";
-        else if (wolvesAlive >= othersAlive) winner = "WEREWOLVES";
+        // Keep the match going while there is still at least one non-werewolf alive.
+        // This makes majority situations playable instead of ending the game immediately.
+        else if (othersAlive === 0) winner = "WEREWOLVES";
 
         let summary = victimName
           ? victimName + " tidak selamat dari malam ini."
@@ -703,7 +705,7 @@ Deno.serve(async (req: Request) => {
       const wolvesAlive = remaining.filter((p: any) => roleById.get(p.id) === "WEREWOLF").length;
       const othersAlive = remaining.length - wolvesAlive;
       let winner: "WEREWOLVES" | "VILLAGERS" | null = null;
-      if (wolvesAlive === 0) winner = "VILLAGERS"; else if (wolvesAlive >= othersAlive) winner = "WEREWOLVES";
+      if (wolvesAlive === 0) winner = "VILLAGERS"; else if (othersAlive === 0) winner = "WEREWOLVES";
       if (eliminatedId && roleById.get(eliminatedId) === "HUNTER") {
         await db.from("actions").insert({ room_id: player.room_id, player_id: eliminatedId, action_type: "HUNTER_PENDING", round: room.round, action_data: { return_phase: winner ? "game_over" : "night" } });
         await db.from("game_states").update({ phase: "hunter", last_night_summary: summary, updated_at: new Date().toISOString() }).eq("room_id", player.room_id).eq("phase", "voting");
