@@ -335,7 +335,7 @@ export default function GameRoom(){
     <div className="dawn-opening-label">A NEW DAY HAS BEGUN</div>
     <h1 id="dawn-title">THE VILLAGE AWAKENS</h1>
     <p>Fajar menyinari desa yang masih tenang. Semua orang terlihat biasa saja, tapi salah satu dari kalian menyimpan rahasia.</p>
-    <div className="dawn-opening-rule"><span>20</span><i></i><span>ONE VILLAGE · HIDDEN ROLES</span></div>
+    <div className="dawn-opening-rule"><span>DAY {room.round}</span><i></i><span>ONE VILLAGE · HIDDEN ROLES</span></div>
     <button className="dawn-opening-button" onClick={()=>{setShowDawn(false);setShowIntro(true)}}>DISCOVER YOUR ROLE <span>→</span></button>
    </div>
   </div>}
