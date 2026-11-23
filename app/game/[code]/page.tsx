@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Player={id:string;name:string;is_alive:boolean;created_at:string};
 type Room={id:string;code:string;status:"lobby"|"active"|"finished";round:number;host_player_id:string|null};
 type Phase="lobby"|"night"|"resolution"|"day"|"voting"|"hunter"|"game_over";
+type Announcement={type:"night"|"vote"|"hunter"|"game_over";kicker:string;title:string;subtitle:string;summary:string};
 
 const roles:Record<string,{name:string;icon:string;desc:string}>={
  WEREWOLF:{name:"Werewolf",icon:"☾",desc:"Bangun tiap malam dan pilih korban bersama serigala lain."},
@@ -24,7 +25,8 @@ export default function GameRoom(){
  const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null),[voteProgress,setVoteProgress]=useState<any>(null),[myVote,setMyVote]=useState<any>(null);
  const [selectedTarget,setSelectedTarget]=useState(""),[selectedVote,setSelectedVote]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
  const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
- const [showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[nightReportOpen,setNightReportOpen]=useState(false),[nightReportSeen,setNightReportSeen]=useState("");
+ const [showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[announcement,setAnnouncement]=useState<Announcement|null>(null);
+ const phaseSeen=useRef<Phase|null>(null),announcementSeen=useRef("");
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
@@ -32,13 +34,6 @@ export default function GameRoom(){
  const nightTargets=alive.filter(p=>myRole==="DOCTOR"||(p.id!==myId&&!allies.some(a=>a.id===p.id)));
 
  useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){const legacyId=localStorage.getItem("werewolf_player_id");const legacyToken=localStorage.getItem("werewolf_session");if(legacyId&&legacyToken){id=legacyId;sessionStorage.setItem("werewolf_player_id",id);sessionStorage.setItem("werewolf_session",legacyToken)}}if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
-
- useEffect(()=>{
-   if(phase==="day" && lastNightSummary==="Tidak ada korban malam ini." && room){
-    const key=`${room.round}:${lastNightSummary}`;
-    if(nightReportSeen!==key){setNightReportSeen(key);setNightReportOpen(true);}
-   }
- },[phase,lastNightSummary,room?.round]);
 
  async function load(id:string){
    const playerId=sessionStorage.getItem("werewolf_player_id");
@@ -50,9 +45,45 @@ export default function GameRoom(){
    if(e||!data){setError(e?.message??"Gagal memuat room.");return}
    if(data.room?.status==="lobby"){window.location.href="/lobby/"+data.room.code;return} if(data.room)setRoom(data.room);
    if(Array.isArray(data.players))setPlayers(data.players);
-   if(["lobby","night","resolution","day","voting","hunter","game_over"].includes(data.phase))setPhase(data.phase);
+   const nextPhase=(["lobby","night","resolution","day","voting","hunter","game_over"].includes(data.phase)?data.phase:"lobby") as Phase;
+   const previousPhase=phaseSeen.current;
+   const summary=typeof data.last_night_summary==="string"?data.last_night_summary:"";
+   let announcementType:Announcement["type"]|null=null;
+   if(summary && nextPhase==="game_over") announcementType="game_over";
+   else if(summary && (previousPhase==="night"||previousPhase==="resolution") && nextPhase==="day") announcementType="night";
+   else if(summary && previousPhase==="voting" && (nextPhase==="night"||nextPhase==="hunter")) announcementType="vote";
+   else if(summary && previousPhase==="hunter" && nextPhase==="night") announcementType="hunter";
+   if(announcementType){
+    const key=`${data.room?.id??id}:${data.room?.round??1}:${nextPhase}:${summary}`;
+    if(announcementSeen.current!==key){
+     announcementSeen.current=key;
+     const wolvesWon=summary.toLowerCase().includes("tim werewolf menang");
+     const noVictim=/tidak ada korban malam ini/i.test(summary);
+     const title=announcementType==="game_over"
+      ?(wolvesWon?"THE WOLVES PREVAIL":"THE VILLAGE SURVIVES")
+      :announcementType==="night"
+       ?(noVictim?"NO ONE FELL":"A LIFE WAS LOST")
+       :announcementType==="vote"
+        ?(/voting seri/i.test(summary)?"THE VILLAGE IS DIVIDED":"THE VERDICT IS IN")
+        :"THE HUNTER HAS FIRED";
+     const kicker=announcementType==="game_over"?"FINAL VERDICT · GAME OVER"
+      :announcementType==="night"?"DAYBREAK REPORT · THE NIGHT HAS ENDED"
+      :announcementType==="vote"?"VILLAGE VERDICT · ROUND COMPLETE"
+      :"HUNTER'S LAST SHOT · ROUND COMPLETE";
+     const subtitle=announcementType==="game_over"
+      ?(wolvesWon?"The Werewolves have taken control of the village.":"The Werewolves have been defeated. The village is safe.")
+      :announcementType==="night"
+       ?(noVictim?"Every villager made it through the night. For now, the village is safe.":"Morning has come, but one of the villagers did not make it.")
+       :announcementType==="vote"
+        ?(/voting seri/i.test(summary)?"No clear majority. The village must live with its uncertainty.":"The votes have been counted. The village has made its choice.")
+        :"The Hunter's final action has changed the fate of the village.";
+     setAnnouncement({type:announcementType,kicker,title,subtitle,summary});
+    }
+   }
+   phaseSeen.current=nextPhase;
+   setPhase(nextPhase);
    setNightProgress(data.night_progress??null);
-   setLastNightSummary(data.last_night_summary??"");
+   setLastNightSummary(summary);
    if(data.phase==="night"){
     setMyNightAction(data.my_night_action??null);
     if(data.my_night_action?.target_player_id)setSelectedTarget((current:string)=>current||data.my_night_action.target_player_id);
@@ -193,13 +224,13 @@ export default function GameRoom(){
  if (!room) return <main className="game-loading"><div className="loading-mark">☾</div><p>{error || "MEMASUKI DESA..."}</p></main>;
  const selectedTargetName = players.find((p) => p.id === selectedTarget)?.name;
  const selectedVoteName = players.find((p) => p.id === selectedVote)?.name;
- const phaseTitle = phase === "night" || phase === "resolution" ? "THE VILLAGE IS ASLEEP" : phase === "day" ? "THE VILLAGE WAKES" : phase === "voting" ? "THE VILLAGE MUST DECIDE" : phase === "hunter" ? "ONE LAST SHOT" : "THE GAME HAS ENDED";
- const phaseSubtitle = phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
+ const phaseTitle = showIntro ? "A NEW DAY BEGINS" : phase === "night" || phase === "resolution" ? "THE VILLAGE IS ASLEEP" : phase === "day" ? "THE VILLAGE WAKES" : phase === "voting" ? "THE VILLAGE MUST DECIDE" : phase === "hunter" ? "ONE LAST SHOT" : "THE GAME HAS ENDED";
+ const phaseSubtitle = showIntro ? "FIRST LIGHT OVER THE FORGOTTEN VILLAGE" : phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
  return <main className={"game game-room " + ((phase === "night" || phase === "resolution") && !showIntro ? "is-night" : "is-day")}>
   <header className="top game-top">
    <div className="brand">WEREWOLF<span>//</span>ONLINE</div>
    <div className="room">ROOM <b>{room.code}</b></div>
-   <div className="game-top-right"><span className="phase-pill">{phase.toUpperCase()} · ROUND {room.round}</span><span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
+   <div className="game-top-right"><span className="phase-pill">{showIntro?"DAWN INTRO":phase.toUpperCase()} · ROUND {room.round}</span><span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
   </header>
   <section className="gameplay-shell">
    <div className="scene-heading">
@@ -213,8 +244,8 @@ export default function GameRoom(){
     <div className="arena-ring ring-outer"></div>
     <div className="arena-ring ring-inner"></div>
     <div className="village-core" key={phase}>
-     <div className="core-moon">{phase === "day" || phase === "voting" ? "☀" : phase === "hunter" ? "⌁" : phase === "game_over" ? "✦" : "☾"}</div>
-     <span className="core-kicker">{phase === "night" || phase === "resolution" ? "NIGHTFALL" : phase === "day" ? "DAYBREAK" : phase === "voting" ? "THE VERDICT" : phase === "hunter" ? "LAST STAND" : "FINAL CHAPTER"}</span>
+     <div className="core-moon">{showIntro || phase === "day" || phase === "voting" ? "☀" : phase === "hunter" ? "⌁" : phase === "game_over" ? "✦" : "☾"}</div>
+     <span className="core-kicker">{showIntro?"FIRST LIGHT":phase === "night" || phase === "resolution" ? "NIGHTFALL" : phase === "day" ? "DAYBREAK" : phase === "voting" ? "THE VERDICT" : phase === "hunter" ? "LAST STAND" : "FINAL CHAPTER"}</span>
      <h1>{phaseTitle}</h1>
      <p>ROUND {room.round} <span>•</span> {alive.length} OF {players.length} SOULS REMAIN</p>
      <div className="core-fire"><i></i><i></i><i></i><span>✦</span></div>
@@ -296,9 +327,9 @@ export default function GameRoom(){
    </section>
    <footer className="scene-footer"><span>ROOM {room.code}</span><span>{me?.name ?? "PLAYER"} · {room.host_player_id === myId ? "HOST" : "PLAYER"}</span><button onClick={leave} disabled={busy}>LEAVE GAME</button></footer>
   </section>
-  {showIntro && <div className="intro-overlay"><div className={"intro-card " + (myRole?.toLowerCase() ?? "")}>
+  {showIntro && <div className="intro-overlay morning-intro-overlay"><div className={"intro-card morning-intro-card " + (myRole?.toLowerCase() ?? "")}>
    <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon || "☾"}</div><div className="intro-line"></div>
-   <div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
+   <div className="morning-ribbon">☀ FIRST LIGHT · THE VILLAGE IS WAKING</div><div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
    <h2>{role?.name?.toUpperCase() || "YOUR ROLE"}</h2>
    <p>{myRole === "WEREWOLF" ? "Kamu bagian dari tim Werewolf. Berpura-puralah sebagai warga, koordinasikan korban, dan jangan sampai identitas timmu terbongkar." : myRole === "SEER" ? "Kamu adalah mata desa. Setiap malam kamu dapat memeriksa satu pemain dan mengetahui role aslinya." : myRole === "DOCTOR" ? "Kamu adalah pelindung desa. Setiap malam lindungi satu pemain dari serangan Werewolf." : myRole === "HUNTER" ? "Kamu adalah Hunter. Kalau kamu mati, kamu mendapat satu kesempatan terakhir untuk menembak pemain hidup." : "Kamu adalah Villager. Tidak punya aksi malam, jadi kekuatanmu ada di pengamatan, diskusi, dan voting."}</p>
    <div className="intro-rules">
@@ -308,8 +339,26 @@ export default function GameRoom(){
    </div>
    {myRole === "WEREWOLF" && <div className="intro-role"><span>YOUR PACK</span><strong>{allies.length ? allies.map(a=>a.name).join(" · ") : "YOU STAND ALONE"}</strong><small>Jangan pernah membocorkan daftar ini ke desa.</small></div>}
    <div className="intro-role"><span>GAME FLOW</span><strong>🌙 NIGHT → ☀️ DAY → ⚖️ VOTE</strong><small>Malam untuk kemampuan rahasia. Siang untuk diskusi. Voting menentukan siapa yang tersingkir. Jika Hunter mati, dia mendapat fase khusus.</small></div>
-   <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTAND · ENTER THE VILLAGE</button>
+   <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTOOD · LET NIGHT FALL</button>
   </div></div>}
+  {announcement && <div className={`announcement-overlay announcement-${announcement.type}`} role="dialog" aria-modal="true" aria-labelledby="announcement-title">
+   <div className="announcement-sunburst"></div>
+   <div className="announcement-card">
+    <div className="announcement-emblem">{announcement.type==="game_over"?"✦":announcement.type==="night"?(announcement.title==="NO ONE FELL"?"☀":"✧"):announcement.type==="vote"?"⚖":"⌁"}</div>
+    <div className="announcement-kicker">{announcement.kicker}</div>
+    <h2 id="announcement-title">{announcement.title}</h2>
+    <p className="announcement-subtitle">{announcement.subtitle}</p>
+    <div className="announcement-divider"></div>
+    <div className="announcement-summary"><span>THE VILLAGE REPORT</span><strong>{announcement.summary}</strong></div>
+    <div className="announcement-stats">
+     <div><strong>{alive.length}</strong><span>STANDING</span></div>
+     <div><strong>{players.length-alive.length}</strong><span>FALLEN</span></div>
+     <div><strong>{room.round}</strong><span>ROUND</span></div>
+    </div>
+    {announcement.type==="game_over" && <div className="announcement-winner">{announcement.title==="THE WOLVES PREVAIL"?"WEREWOLF VICTORY":"VILLAGER VICTORY"}</div>}
+    <button className="announcement-continue" onClick={()=>setAnnouncement(null)}>CONTINUE TO THE VILLAGE <span>→</span></button>
+   </div>
+  </div>}
   {notice && <div className="toast">✓ {notice}</div>}{error && <div className="toast error-toast">{error}</div>}
  </main>;
 
