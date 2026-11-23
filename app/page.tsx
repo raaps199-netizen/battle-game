@@ -1,32 +1,60 @@
 "use client";
 
-import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import Link from "next/link";
 
-export default function Home(){
- const [name,setName]=useState(""),[roomCode,setRoomCode]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
- async function create(){
-  if(!name.trim())return setError("Nama dulu jir.");
-  setBusy(true);setError("");
-  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"create",name:name.trim()}});
-  if(e||!data){setError(e?.message??"Gagal bikin room.");setBusy(false);return}
-  sessionStorage.setItem("werewolf_player_id",data.player_id);sessionStorage.setItem("werewolf_session",data.session_token);
-  window.location.href="/lobby/"+data.room.code;
- }
- async function join(){
-  if(!name.trim()||!roomCode.trim())return setError("Nama sama kode room isi dulu.");
-  setBusy(true);setError("");
-  const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"join",name:name.trim(),code:roomCode.trim().toUpperCase()}});
-  if(e||!data){setError(e?.message??"Gagal join room.");setBusy(false);return}
-  sessionStorage.setItem("werewolf_player_id",data.player_id);sessionStorage.setItem("werewolf_session",data.session_token);
-  window.location.href="/lobby/"+data.room.code;
- }
- return <main className="landing"><div className="landing-card">
-   <div className="brand">WEREWOLF<span>//</span>ONLINE</div><div className="eyebrow">SOCIAL DEDUCTION · REALTIME</div>
-   <h1>WHO IS LYING?</h1><p className="muted">Masuk room, role diacak server, lalu cari siapa yang malam-malam bikin masalah. Manusia memang senang konflik yang punya aturan.</p>
-   <input value={name} onChange={e=>setName(e.target.value)} placeholder="NAMA PEMAIN" maxLength={20}/>
-   <div className="join-row"><input value={roomCode} onChange={e=>setRoomCode(e.target.value.toUpperCase())} placeholder="KODE ROOM" maxLength={8}/><button onClick={join} disabled={busy}>JOIN</button></div>
-   <button className="primary" onClick={create} disabled={busy}>{busy?"CONNECTING...":"CREATE ROOM"}</button>
-   {error&&<div className="error">{error}</div>}<div className="tiny">3–20 PLAYERS · WEREWOLF / SEER / DOCTOR / HUNTER / VILLAGER</div>
- </div></main>
+export default function GameHub() {
+  return (
+    <main className="hub-page">
+      <header className="hub-topbar">
+        <Link href="/" className="hub-brand">GOHOFog<span>•</span></Link>
+        <div className="hub-nav">
+          <span className="hub-nav-active">GAMES</span>
+          <span className="hub-status"><i /> LIVE PLATFORM</span>
+        </div>
+      </header>
+      <section className="hub-hero">
+        <div className="hub-hero-copy">
+          <div className="hub-overline"><span /> THE GAME LOBBY</div>
+          <h1>Pick a game.<br /><em>Make a night of it.</em></h1>
+          <p>One place for games with friends. Choose a game and get straight into the action.</p>
+        </div>
+        <div className="hub-hero-mark" aria-hidden="true">
+          <div className="hub-orbit orbit-one" />
+          <div className="hub-orbit orbit-two" />
+          <div className="hub-moon">☾</div>
+          <span className="hub-mark-star star-one">✦</span>
+          <span className="hub-mark-star star-two">✧</span>
+        </div>
+      </section>
+      <section className="hub-library">
+        <div className="hub-section-head">
+          <div><span className="hub-section-kicker">THE LIBRARY</span><h2>Games <span>01</span></h2></div>
+          <span className="hub-section-note">CHOOSE YOUR NEXT MATCH</span>
+        </div>
+        <div className="hub-game-grid">
+          <Link href="/games/werewolf" className="hub-game-card">
+            <div className="hub-card-art werewolf-art">
+              <div className="werewolf-art-glow" /><div className="werewolf-art-moon">☾</div>
+              <div className="werewolf-art-tree tree-left" /><div className="werewolf-art-tree tree-right" />
+              <div className="werewolf-silhouette">♟</div>
+              <span className="hub-card-index">01 / SOCIAL DEDUCTION</span>
+              <span className="hub-card-play">PLAY <b>↗</b></span>
+            </div>
+            <div className="hub-card-info">
+              <div><span className="hub-card-tag"><i /> AVAILABLE NOW</span><h3>Werewolf</h3><p>Read the room. Find the liar. Survive the night.</p></div>
+              <span className="hub-card-arrow">↗</span>
+            </div>
+          </Link>
+          <div className="hub-coming-card">
+            <div className="hub-coming-symbol">＋</div>
+            <span>MORE GAMES</span>
+            <strong>Something new<br />is coming.</strong>
+            <p>The library will grow from here.</p>
+            <div className="hub-coming-line" />
+          </div>
+        </div>
+      </section>
+      <footer className="hub-footer"><span>GOHOFog <b>•</b> GAME HUB</span><span>PLAY TOGETHER. THINK DIFFERENTLY.</span></footer>
+    </main>
+  );
 }
