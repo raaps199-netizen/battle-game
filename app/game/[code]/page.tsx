@@ -253,15 +253,11 @@ export default function GameRoom(){
  const phaseSubtitle = showDawn ? "FIRST LIGHT OVER THE FORGOTTEN VILLAGE" : showIntro ? "YOUR ROLE WILL SHAPE THE FATE OF THIS VILLAGE" : phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
  return <main className={"game game-room " + ((phase === "night" || phase === "resolution") && !showIntro && !showDawn ? "is-night" : "is-day")}>
   <header className="top game-top">
-   <div className="brand">WEREWOLF<span>//</span>ONLINE</div>
+   <div className="brand">GOHOFog<span>•</span> WEREWOLF</div>
    <div className="room">ROOM <b>{room.code}</b></div>
    <div className="game-top-right"><span className="phase-pill">{showDawn?"DAWN":showIntro?"ROLE INTRO":phase.toUpperCase()} · ROUND {room.round}</span>{isSpectator && <span className="spectator-pill">SPECTATOR</span>}<span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
   </header>
   <section className="gameplay-shell">
-   <div className="scene-heading">
-    <span className="scene-kicker">THE FORGOTTEN VILLAGE</span>
-    <span className="scene-subtitle">{isSpectator ? "YOU HAVE FALLEN · " + phaseSubtitle : phaseSubtitle}</span>
-   </div>
    <div className="arena">
     <div className="arena-stars"></div>
     <div className="arena-fog fog-a"></div>
@@ -301,7 +297,6 @@ export default function GameRoom(){
        {bubble && (phase !== "night" || isSpectator) && <span className="speech-bubble" key={bubble.id}><b>{p.id === myId ? "YOU" : p.name}</b>{bubble.body}</span>}
        <span className="avatar-halo"><span className="player-avatar">{p.is_alive ? p.name.trim().charAt(0).toUpperCase() : "✕"}</span><i className="alive-dot"></i></span>
        <span className="seat-name">{p.name}</span>
-       <span className="seat-status">{p.id === myId ? "YOU" : p.is_alive ? "ALIVE" : "FALLEN"}</span>
       </button>;
      })}
     </div>
@@ -310,12 +305,11 @@ export default function GameRoom(){
     <div className="role-chip">
      <span className="role-chip-icon">{role?.icon || "?"}</span>
      <span><small>{isSpectator?"YOUR ROLE · FALLEN":"YOUR ROLE"}</small><strong>{role?.name || "HIDDEN"}</strong></span>
-     <span className="role-chip-desc">{role?.desc || "Your identity is private."}</span>
     </div>
     <div className="phase-console">
      {phase === "night" && <div className="phase-console-inner">
-      <div className="console-title"><span>NIGHT ACTION</span><small>{nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0} SUBMITTED</small></div>
-      <p>{isSpectator ? "Kamu sudah tersingkir. Saksikan aksi malam dari pinggir desa. Kamu tidak bisa lagi memilih target atau mengubah hasil." : myRole === "WEREWOLF" ? "Pilih warga yang akan menjadi korban. Rekan serigala: " + (allies.map(a=>a.name).join(", ") || "tidak ada") + "." : myRole === "SEER" ? "Ketuk profil pemain untuk memeriksa identitasnya." : myRole === "DOCTOR" ? "Pilih satu pemain untuk dilindungi malam ini." : "Kamu tidak memiliki aksi malam. Tunggu desa bangun."}</p>
+      <div className="console-title"><span>NIGHT</span><small>{nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0} SUBMITTED</small></div>
+      <p>{isSpectator ? "Kamu sudah gugur." : myRole === "WEREWOLF" ? "Pilih korban. Pack: " + (allies.map(a=>a.name).join(", ") || "solo") : myRole === "SEER" ? "Pilih pemain untuk diperiksa." : myRole === "DOCTOR" ? "Pilih pemain untuk dilindungi." : "Role-mu tidak punya aksi malam."}</p>
       {canActAtNight && me?.is_alive && <div className="selected-target"><span>TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div>}
       {canActAtNight && me?.is_alive && <button className="primary action-submit" onClick={nightAction} disabled={busy || !selectedTarget}>{myNightAction ? "UPDATE NIGHT ACTION" : "CONFIRM ACTION"}</button>}
       <div className="action-progress"><b>{isSpectator ? "SPECTATOR MODE · YOUR ROLE IS NO LONGER ACTIVE" : myNightAction ? "✓ YOUR ACTION IS LOCKED IN" : canActAtNight ? "CHOOSE A PROFILE AROUND THE CIRCLE" : "WAITING FOR SPECIAL ROLES"}</b></div>
@@ -329,15 +323,15 @@ export default function GameRoom(){
       <div className="console-actions">{room.host_player_id === myId && <button className="primary" onClick={startVoting} disabled={busy}>OPEN VOTING</button>}</div>
      </div>}
      {phase === "voting" && <div className="phase-console-inner">
-      <div className="console-title"><span>VILLAGE VOTE</span><small>{voteProgress?.submitted ?? 0}/{voteProgress?.required ?? 0} VOTES</small></div>
-      <p>{isSpectator ? "Kamu sudah tersingkir dan tidak bisa ikut voting. Hasil tetap terlihat saat host membukanya." : "Ketuk profil pemain yang kamu curigai. Pilihanmu bisa diubah sebelum hasil dibuka."}</p>
+      <div className="console-title"><span>VOTE</span><small>{voteProgress?.submitted ?? 0}/{voteProgress?.required ?? 0} VOTES</small></div>
+      <p>{isSpectator ? "Kamu tidak bisa ikut voting." : "Pilih pemain yang paling kamu curigai."}</p>
       {me?.is_alive && <><div className="selected-target"><span>YOUR VOTE</span><strong>{selectedVoteName || "TAP A PLAYER PROFILE"}</strong></div>
       <button className="primary action-submit" onClick={vote} disabled={busy || !selectedVote}>{myVote ? "CHANGE VOTE" : "CAST VOTE"}</button></>}
 
      </div>}
      {phase === "hunter" && <div className="phase-console-inner">
       <div className="console-title"><span>HUNTER'S LAST SHOT</span><small>FINAL ABILITY</small></div>
-      <p>{myRole === "HUNTER" && !!me && !me.is_alive ? "Kamu adalah Hunter. Gunakan kemampuan terakhirmu untuk memilih satu pemain hidup." : isSpectator ? "Kamu telah gugur. Saksikan kemampuan terakhir Hunter dari luar permainan." : "Hunter sedang menentukan target terakhirnya."}</p>
+      <p>{myRole === "HUNTER" && !!me && !me.is_alive ? "Pilih satu target terakhir." : "Hunter sedang memilih target."}</p>
       {myRole === "HUNTER" && !!me && !me.is_alive && <><div className="selected-target"><span>LAST TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget || busy}>FIRE</button></>}
 
      </div>}
@@ -355,37 +349,26 @@ export default function GameRoom(){
   {showDawn && <div className="dawn-opening" role="dialog" aria-modal="true" aria-labelledby="dawn-title">
    <div className="dawn-opening-halo"></div>
    <div className="dawn-opening-content">
-    <div className="dawn-opening-kicker">THE FORGOTTEN VILLAGE · ROUND {room.round}</div>
+    <div className="dawn-opening-kicker">ROUND {room.round}</div>
     <div className="dawn-opening-sun">☀</div>
     <div className="dawn-opening-label">A NEW DAY HAS BEGUN</div>
     <h1 id="dawn-title">THE VILLAGE AWAKENS</h1>
-    <p>Fajar menyinari desa yang masih tenang. Semua orang terlihat biasa saja, tapi salah satu dari kalian menyimpan rahasia.</p>
-    <div className="dawn-opening-rule"><span>DAY {room.round}</span><i></i><span>ONE VILLAGE · HIDDEN ROLES</span></div>
     <button className="dawn-opening-button" onClick={()=>{setShowDawn(false);setShowIntro(true)}}>DISCOVER YOUR ROLE <span>→</span></button>
    </div>
   </div>}
   {showIntro && <div className="intro-overlay morning-intro-overlay"><div className={"intro-card morning-intro-card " + (myRole?.toLowerCase() ?? "")}>
    <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon || "☾"}</div><div className="intro-line"></div>
-   <div className="morning-ribbon">☀ FIRST LIGHT · THE VILLAGE IS WAKING</div><div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
+   <div className="morning-ribbon">☀ ROUND {room.round}</div><div className="eyebrow">YOUR ROLE</div>
    <h2>{role?.name?.toUpperCase() || "YOUR ROLE"}</h2>
    <p>{myRole === "WEREWOLF" ? "Kamu bagian dari tim Werewolf. Berpura-puralah sebagai warga, koordinasikan korban, dan jangan sampai identitas timmu terbongkar." : myRole === "SEER" ? "Kamu adalah mata desa. Setiap malam kamu dapat memeriksa satu pemain dan mengetahui role aslinya." : myRole === "DOCTOR" ? "Kamu adalah pelindung desa. Setiap malam lindungi satu pemain dari serangan Werewolf." : myRole === "HUNTER" ? "Kamu adalah Hunter. Kalau kamu mati, kamu mendapat satu kesempatan terakhir untuk menembak pemain hidup." : "Kamu adalah Villager. Tidak punya aksi malam, jadi kekuatanmu ada di pengamatan, diskusi, dan voting."}</p>
-   <div className="intro-rules">
-    <div><b>ROLE</b><span>{role?.desc}</span></div>
-    <div><b>YOUR GOAL</b><span>{myRole === "WEREWOLF" ? "Buat jumlah Werewolf setidaknya sama dengan warga yang tersisa." : "Temukan dan singkirkan semua Werewolf sebelum mereka menguasai desa."}</span></div>
-    <div><b>YOUR ACTION</b><span>{myRole === "WEREWOLF" ? "Pilih korban bersama timmu." : myRole === "SEER" ? "Pilih satu pemain untuk diperiksa." : myRole === "DOCTOR" ? "Pilih satu pemain untuk dilindungi." : myRole === "HUNTER" ? "Jika mati, pilih satu target untuk ditembak." : "Tidak ada aksi malam. Gunakan diskusi dan voting."}</span></div>
-   </div>
    {myRole === "WEREWOLF" && <div className="intro-role"><span>YOUR PACK</span><strong>{allies.length ? allies.map(a=>a.name).join(" · ") : "YOU STAND ALONE"}</strong><small>Jangan pernah membocorkan daftar ini ke desa.</small></div>}
-   <div className="intro-role"><span>GAME FLOW</span><strong>🌙 NIGHT → ☀️ DAY → ⚖️ VOTE</strong><small>Malam untuk kemampuan rahasia. Siang untuk diskusi. Voting menentukan siapa yang tersingkir. Jika Hunter mati, dia mendapat fase khusus.</small></div>
    <button className="primary intro-button" onClick={()=>setShowIntro(false)}>UNDERSTOOD · LET NIGHT FALL</button>
   </div></div>}
   {announcement && <div className={`announcement-overlay announcement-${announcement.type}`} role="dialog" aria-modal="true" aria-labelledby="announcement-title">
    <div className="announcement-sunburst"></div>
    <div className="announcement-card">
     <div className="announcement-emblem">{announcement.type==="game_over"?"✦":announcement.type==="night"?(announcement.title==="NO ONE FELL"?"☀":"✧"):announcement.type==="vote"?"⚖":"⌁"}</div>
-    <div className="announcement-kicker">{announcement.kicker}</div>
     <h2 id="announcement-title">{announcement.title}</h2>
-    <p className="announcement-subtitle">{announcement.subtitle}</p>
-    <div className="announcement-divider"></div>
     <div className="announcement-summary"><span>THE VILLAGE REPORT</span><strong>{announcement.summary}</strong></div>
     <div className="announcement-stats">
      <div><strong>{alive.length}</strong><span>STANDING</span></div>
