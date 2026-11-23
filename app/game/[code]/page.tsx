@@ -48,7 +48,7 @@ export default function GameRoom(){
     action:"snapshot",room_id:id,player_id:playerId,session_token:sessionToken
    }});
    if(e||!data){setError(e?.message??"Gagal memuat room.");return}
-   if(data.room?.status==="lobby"){window.location.href="/lobby/"+data.room.code;return} if(data.room?.status==="finished"){window.location.href="/";return} if(data.room)setRoom(data.room);
+   if(data.room?.status==="lobby"){window.location.href="/lobby/"+data.room.code;return} if(data.room)setRoom(data.room);
    if(Array.isArray(data.players))setPlayers(data.players);
    if(["lobby","night","resolution","day","voting","hunter","game_over"].includes(data.phase))setPhase(data.phase);
    setNightProgress(data.night_progress??null);
@@ -72,7 +72,7 @@ export default function GameRoom(){
    return()=>{clearInterval(poll);clearInterval(chatPoll);supabase.removeChannel(c)}
  },[room?.id]);
 
- useEffect(()=>{if(room?.status==="active"&&myId)fetchRole(myId)},[room?.status,myId,phase]);
+ useEffect(()=>{if((room?.status==="active"||room?.status==="finished")&&myId)fetchRole(myId)},[room?.status,myId,phase]);
 
  async function start(){
   if(!room||room.host_player_id!==myId)return;
