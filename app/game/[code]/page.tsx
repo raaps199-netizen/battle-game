@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import "../../../app/globals.css";
 import { supabase } from "@/lib/supabase";
 
 type Player={id:string;name:string;is_alive:boolean;created_at:string};
@@ -52,7 +51,7 @@ export default function GameRoom(){
     if(data.my_night_action?.target_player_id)setSelectedTarget((current:string)=>current||data.my_night_action.target_player_id);
    }else{setMyNightAction(null);setSelectedTarget("");}
  }
- useEffect(()=>{const playerId=sessionStorage.getItem("werewolf_player_id");if(!playerId){window.location.href="/";return}load("session");},[]);
+ useEffect(()=>{const playerId=sessionStorage.getItem("werewolf_player_id");if(!playerId){window.location.href="/";return}load("");},[]);
  async function loadChat(id:string){
    const {data}=await supabase.from("chat_messages").select("id,body,player_id,created_at").eq("room_id",id).eq("channel","general").order("created_at",{ascending:true}).limit(100);
    if(data)setMessages(data);
