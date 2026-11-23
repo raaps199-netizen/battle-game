@@ -754,6 +754,31 @@ Deno.serve(async (req: Request) => {
       await db.from("game_states").update({phase:nextPhase,last_night_summary:summary,updated_at:new Date().toISOString()}).eq("room_id",player.room_id).eq("phase","hunter");
       return json({resolved:true,summary,winner,phase:nextPhase});
     }
+    if (body.action === "chat_history") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+      if (body.room_id && body.room_id !== player.room_id) {
+        return json({ error: "Player is not in this room" }, 403);
+      }
+
+      const channel = player.is_alive ? "general" : "ghost";
+      const { data: room, error: roomError } = await db.from("rooms")
+        .select("status")
+        .eq("id", player.room_id)
+        .single();
+      if (roomError) throw roomError;
+      if (room.status !== "active") return json({ channel, messages: [] });
+
+      const { data: messages, error: messagesError } = await db.from("chat_messages")
+        .select("id,body,player_id,created_at,channel")
+        .eq("room_id", player.room_id)
+        .eq("channel", channel)
+        .order("created_at", { ascending: true })
+        .limit(100);
+      if (messagesError) throw messagesError;
+      return json({ channel, messages: messages ?? [] });
+    }
+
     if (body.action === "chat_send") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
@@ -762,7 +787,8 @@ Deno.serve(async (req: Request) => {
       if (!message || message.length > 500) {
         return json({ error: "Message must contain 1-500 characters" }, 400);
       }
-      if (body.channel !== undefined && body.channel !== "general") {
+      const channel = body.channel === undefined ? "general" : body.channel;
+      if (channel !== "general" && channel !== "ghost") {
         return json({ error: "Unsupported chat channel" }, 400);
       }
 
@@ -772,23 +798,26 @@ Deno.serve(async (req: Request) => {
       ]);
       if (roomError) throw roomError;
       if (stateError) throw stateError;
-      if (room.status === "finished") return json({ error: "Room is finished" }, 400);
-      if (room.status === "active" && !player.is_alive && state.phase !== "game_over" && state.phase !== "hunter") {
-        return json({ error: "Dead players cannot send village messages" }, 403);
-      }
-      if (room.status === "active" && !["day", "voting", "hunter"].includes(state.phase)) {
-        return json({ error: "Village chat is closed at night" }, 403);
+      if (room.status !== "active") return json({ error: "Room chat is closed" }, 400);
+
+      if (channel === "ghost") {
+        if (player.is_alive) return json({ error: "Only fallen players can use ghost chat" }, 403);
+      } else {
+        if (!player.is_alive) return json({ error: "Fallen players cannot send village messages" }, 403);
+        if (!["day", "voting"].includes(state.phase)) {
+          return json({ error: "Village chat is only open during discussion and voting" }, 403);
+        }
       }
 
       const { data: saved, error } = await db.from("chat_messages")
         .insert({
           room_id: player.room_id,
           player_id: player.id,
-          channel: "general",
+          channel,
           body: message,
           day: room.round,
         })
-        .select("id,body,player_id,created_at")
+        .select("id,body,player_id,created_at,channel")
         .single();
       if (error) throw error;
       return json({ message: saved });
