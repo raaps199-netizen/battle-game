@@ -174,7 +174,7 @@ export default function GameRoom(){
  async function resolveHunter(){
   if(!room||room.host_player_id!==myId)return;setBusy(true);
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_hunter",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
-  if(e||!data?.resolved)setError(data?.error??e?.message??"Hunter gagal diselesaikan.");else{setNotice(data.summary??"HUNTER SELESAI");await load(room.id);await fetchRole(myId)}setBusy(false);
+  if(e||!data?.resolved)setError(data?.error??e?.message??"Hunter gagal diselesaikan.");else{await load(room.id);await fetchRole(myId)}setBusy(false);
  }
  async function resolveNight(){
   if(!room||!myId||room.host_player_id!==myId)return;
