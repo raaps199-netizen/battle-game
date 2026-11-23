@@ -164,7 +164,7 @@ export default function GameRoom(){
  async function resolveVotes(){
   if(!room||room.host_player_id!==myId)return;setBusy(true);
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"resolve_votes",player_id:myId,session_token:sessionStorage.getItem("werewolf_session")}});
-  if(e||!data?.resolved)setError(data?.error??e?.message??"Voting gagal.");else{setNotice(data.summary??"VOTING SELESAI");await load(room.id);await fetchRole(myId)}setBusy(false);
+  if(e||!data?.resolved)setError(data?.error??e?.message??"Voting gagal.");else{await load(room.id);await fetchRole(myId)}setBusy(false);
  }
  async function hunterAction(){
   if(!room||!selectedTarget)return;setBusy(true);
@@ -187,7 +187,6 @@ export default function GameRoom(){
    try{const response=(e as unknown as {context?:Response})?.context;if(response){const body=await response.clone().json();if(typeof body?.error==="string")detail=body.error}}catch{}
    setError(detail);await load(room.id);setBusy(false);return;
   }
-  setNotice(data.summary??"MALAM SELESAI");
   await load(room.id);
   await loadChat(room.id);
   setBusy(false);
