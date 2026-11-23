@@ -195,7 +195,7 @@ export default function GameRoom(){
  const selectedVoteName = players.find((p) => p.id === selectedVote)?.name;
  const phaseTitle = phase === "night" || phase === "resolution" ? "THE VILLAGE IS ASLEEP" : phase === "day" ? "THE VILLAGE WAKES" : phase === "voting" ? "THE VILLAGE MUST DECIDE" : phase === "hunter" ? "ONE LAST SHOT" : "THE GAME HAS ENDED";
  const phaseSubtitle = phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
- return <main className={"game game-room " + ((phase === "night" || phase === "resolution") ? "is-night" : "is-day")}>
+ return <main className={"game game-room " + ((phase === "night" || phase === "resolution") && !showIntro ? "is-night" : "is-day")}>
   <header className="top game-top">
    <div className="brand">WEREWOLF<span>//</span>ONLINE</div>
    <div className="room">ROOM <b>{room.code}</b></div>
