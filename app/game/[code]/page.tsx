@@ -25,7 +25,7 @@ export default function GameRoom(){
  const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null),[voteProgress,setVoteProgress]=useState<any>(null),[myVote,setMyVote]=useState<any>(null);
  const [selectedTarget,setSelectedTarget]=useState(""),[selectedVote,setSelectedVote]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
  const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
- const [showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[announcement,setAnnouncement]=useState<Announcement|null>(null);
+ const [showDawn,setShowDawn]=useState(false),[showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[announcement,setAnnouncement]=useState<Announcement|null>(null);
  const phaseSeen=useRef<Phase|null>(null),announcementSeen=useRef("");
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
 
@@ -121,7 +121,7 @@ export default function GameRoom(){
     }
     setError(detail);
   } else {
-    setNotice("ROLE DIACAK · GAME DIMULAI");setShowIntro(true);
+    setNotice("ROLE DIACAK · GAME DIMULAI");setShowDawn(true);
     await load(room.id);
     await fetchRole(myId);
   }
@@ -131,7 +131,7 @@ export default function GameRoom(){
   const token=sessionStorage.getItem("werewolf_session");if(!token)return;
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{action:"role",player_id:id,session_token:token}});
   if(!e&&data?.role){
-   setMyRole(data.role); if(!introShown){setShowIntro(true);setIntroShown(true);}
+   setMyRole(data.role); if(!introShown){setShowDawn(true);setIntroShown(true);}
    setAllies(Array.isArray(data.allies)?data.allies:[]);
    setSeerResult(data.seer_result??null);
   }
@@ -224,13 +224,13 @@ export default function GameRoom(){
  if (!room) return <main className="game-loading"><div className="loading-mark">☾</div><p>{error || "MEMASUKI DESA..."}</p></main>;
  const selectedTargetName = players.find((p) => p.id === selectedTarget)?.name;
  const selectedVoteName = players.find((p) => p.id === selectedVote)?.name;
- const phaseTitle = showIntro ? "A NEW DAY BEGINS" : phase === "night" || phase === "resolution" ? "THE VILLAGE IS ASLEEP" : phase === "day" ? "THE VILLAGE WAKES" : phase === "voting" ? "THE VILLAGE MUST DECIDE" : phase === "hunter" ? "ONE LAST SHOT" : "THE GAME HAS ENDED";
- const phaseSubtitle = showIntro ? "FIRST LIGHT OVER THE FORGOTTEN VILLAGE" : phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
- return <main className={"game game-room " + ((phase === "night" || phase === "resolution") && !showIntro ? "is-night" : "is-day")}>
+ const phaseTitle = showDawn ? "THE VILLAGE WAKES" : showIntro ? "A NEW DAY BEGINS" : phase === "night" || phase === "resolution" ? "THE VILLAGE IS ASLEEP" : phase === "day" ? "THE VILLAGE WAKES" : phase === "voting" ? "THE VILLAGE MUST DECIDE" : phase === "hunter" ? "ONE LAST SHOT" : "THE GAME HAS ENDED";
+ const phaseSubtitle = showDawn ? "FIRST LIGHT OVER THE FORGOTTEN VILLAGE" : showIntro ? "YOUR ROLE WILL SHAPE THE FATE OF THIS VILLAGE" : phase === "night" ? "SOMEONE IS MOVING IN THE DARK" : phase === "day" ? "TALK. OBSERVE. TRUST NO ONE." : phase === "voting" ? "CHOOSE WHO LEAVES THE VILLAGE" : phase === "hunter" ? "A FINAL CHOICE BEFORE SILENCE" : "THE VILLAGE WILL REMEMBER";
+ return <main className={"game game-room " + ((phase === "night" || phase === "resolution") && !showIntro && !showDawn ? "is-night" : "is-day")}>
   <header className="top game-top">
    <div className="brand">WEREWOLF<span>//</span>ONLINE</div>
    <div className="room">ROOM <b>{room.code}</b></div>
-   <div className="game-top-right"><span className="phase-pill">{showIntro?"DAWN INTRO":phase.toUpperCase()} · ROUND {room.round}</span><span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
+   <div className="game-top-right"><span className="phase-pill">{showDawn?"DAWN":showIntro?"ROLE INTRO":phase.toUpperCase()} · ROUND {room.round}</span><span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
   </header>
   <section className="gameplay-shell">
    <div className="scene-heading">
@@ -244,8 +244,8 @@ export default function GameRoom(){
     <div className="arena-ring ring-outer"></div>
     <div className="arena-ring ring-inner"></div>
     <div className="village-core" key={phase}>
-     <div className="core-moon">{showIntro || phase === "day" || phase === "voting" ? "☀" : phase === "hunter" ? "⌁" : phase === "game_over" ? "✦" : "☾"}</div>
-     <span className="core-kicker">{showIntro?"FIRST LIGHT":phase === "night" || phase === "resolution" ? "NIGHTFALL" : phase === "day" ? "DAYBREAK" : phase === "voting" ? "THE VERDICT" : phase === "hunter" ? "LAST STAND" : "FINAL CHAPTER"}</span>
+     <div className="core-moon">{showDawn || showIntro || phase === "day" || phase === "voting" ? "☀" : phase === "hunter" ? "⌁" : phase === "game_over" ? "✦" : "☾"}</div>
+     <span className="core-kicker">{showDawn?"FIRST LIGHT":showIntro?"DAWN BRIEFING":phase === "night" || phase === "resolution" ? "NIGHTFALL" : phase === "day" ? "DAYBREAK" : phase === "voting" ? "THE VERDICT" : phase === "hunter" ? "LAST STAND" : "FINAL CHAPTER"}</span>
      <h1>{phaseTitle}</h1>
      <p>ROUND {room.round} <span>•</span> {alive.length} OF {players.length} SOULS REMAIN</p>
      <div className="core-fire"><i></i><i></i><i></i><span>✦</span></div>
@@ -327,6 +327,18 @@ export default function GameRoom(){
    </section>
    <footer className="scene-footer"><span>ROOM {room.code}</span><span>{me?.name ?? "PLAYER"} · {room.host_player_id === myId ? "HOST" : "PLAYER"}</span><button onClick={leave} disabled={busy}>LEAVE GAME</button></footer>
   </section>
+  {showDawn && <div className="dawn-opening" role="dialog" aria-modal="true" aria-labelledby="dawn-title">
+   <div className="dawn-opening-halo"></div>
+   <div className="dawn-opening-content">
+    <div className="dawn-opening-kicker">THE FORGOTTEN VILLAGE · ROUND {room.round}</div>
+    <div className="dawn-opening-sun">☀</div>
+    <div className="dawn-opening-label">A NEW DAY HAS BEGUN</div>
+    <h1 id="dawn-title">THE VILLAGE AWAKENS</h1>
+    <p>Fajar menyinari desa yang masih tenang. Semua orang terlihat biasa saja, tapi salah satu dari kalian menyimpan rahasia.</p>
+    <div className="dawn-opening-rule"><span>20</span><i></i><span>ONE VILLAGE · HIDDEN ROLES</span></div>
+    <button className="dawn-opening-button" onClick={()=>{setShowDawn(false);setShowIntro(true)}}>DISCOVER YOUR ROLE <span>→</span></button>
+   </div>
+  </div>}
   {showIntro && <div className="intro-overlay morning-intro-overlay"><div className={"intro-card morning-intro-card " + (myRole?.toLowerCase() ?? "")}>
    <div className="intro-stars"></div><div className="intro-orb"></div><div className="intro-mark">{role?.icon || "☾"}</div><div className="intro-line"></div>
    <div className="morning-ribbon">☀ FIRST LIGHT · THE VILLAGE IS WAKING</div><div className="eyebrow">ROLE INTRODUCTION · ROUND {room.round}</div>
