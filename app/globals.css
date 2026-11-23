@@ -130,3 +130,64 @@
 .night-report-card .intro-rules b{color:#9daaff}
 .night-report-card .intro-role{border-color:rgba(142,156,255,.28);background:linear-gradient(135deg,rgba(124,139,255,.1),rgba(255,255,255,.025))}
 .night-report-card .intro-role strong{letter-spacing:1px}
+
+
+/* DAYLIGHT VILLAGE */
+.game-room.is-day{
+ background:
+  radial-gradient(ellipse at 50% 32%,rgba(255,247,220,.96) 0%,rgba(231,224,197,.92) 28%,rgba(194,191,169,.92) 58%,rgba(145,145,132,.96) 100%);
+ color:#28291f;
+}
+.game-room.is-day .game-top{
+ background:rgba(255,250,232,.76);
+ border-color:rgba(93,84,55,.14);
+}
+.game-room.is-day .brand,.game-room.is-day .room,.game-room.is-day .phase-pill,.game-room.is-day .alive-pill{color:#4c4939}
+.game-room.is-day .scene-kicker,.game-room.is-day .scene-subtitle{color:#6e6854}
+.game-room.is-day .arena:before{background:radial-gradient(ellipse,rgba(255,246,203,.42),rgba(214,202,164,.12) 52%,transparent 75%)}
+.game-room.is-day .arena-stars{opacity:.06}
+.game-room.is-day .arena-fog{background:rgba(255,244,193,.28);filter:blur(48px)}
+.game-room.is-day .fog-b{background:rgba(205,188,142,.18)}
+.game-room.is-day .ring-outer{border-color:rgba(102,91,55,.22);box-shadow:0 0 60px rgba(255,230,163,.16),inset 0 0 45px rgba(255,238,184,.12)}
+.game-room.is-day .ring-inner{border-color:rgba(104,94,65,.16)}
+.game-room.is-day .core-kicker{color:#756b4e}
+.game-room.is-day .village-core h1{color:#332f24;text-shadow:0 2px 18px rgba(255,249,214,.8)}
+.game-room.is-day .village-core p{color:#776e56}
+.game-room.is-day .core-fire{box-shadow:0 0 38px rgba(255,192,88,.18)}
+.game-room.is-day .core-fire i{border-color:rgba(153,123,55,.18)}
+.game-room.is-day .player-avatar{background:radial-gradient(circle at 35% 25%,#f0e4bd,#8f876d 76%);border-color:rgba(76,68,43,.22);color:#3b372b;text-shadow:none}
+.game-room.is-day .avatar-halo{background:conic-gradient(from 0deg,rgba(130,111,62,.12),rgba(182,160,99,.55),rgba(130,111,62,.1),rgba(130,111,62,.12));box-shadow:0 0 0 1px rgba(85,76,48,.12),0 8px 28px rgba(77,67,43,.16)}
+.game-room.is-day .player-seat.is-me .avatar-halo{background:conic-gradient(#d4b65f,#9f833b,#e7ce83,#d4b65f);box-shadow:0 0 0 2px rgba(181,145,53,.2),0 0 26px rgba(188,151,61,.3)}
+.game-room.is-day .player-seat.is-me .seat-name{color:#725d25}
+.game-room.is-day .seat-name{color:#383428;text-shadow:0 2px 8px rgba(255,250,225,.9)}
+.game-room.is-day .seat-status{color:#756b54}
+.game-room.is-day .alive-dot{border-color:#eee5c8}
+.game-room.is-day .role-chip,.game-room.is-day .phase-console,.game-room.is-day .game-chat{
+ background:rgba(255,249,229,.74);
+ border-color:rgba(91,80,47,.15);
+ box-shadow:0 14px 40px rgba(83,72,42,.12);
+ color:#3d382b;
+}
+.game-room.is-day .role-chip small,.game-room.is-day .console-title small,.game-room.is-day .role-chip-desc,.game-room.is-day .phase-console-inner p{color:#766d56}
+.game-room.is-day .role-chip strong,.game-room.is-day .console-title span{color:#3b362a}
+.game-room.is-day .role-chip-icon{background:rgba(192,155,61,.11);border-color:rgba(156,123,39,.25);color:#725a20}
+.game-room.is-day .selected-target{border-color:rgba(155,125,43,.22);background:rgba(196,160,66,.07)}
+.game-room.is-day .selected-target strong{color:#604d1f}
+.game-room.is-day .chat-status{color:#756b54}
+.game-room.is-day .chat-compose input{background:rgba(255,255,255,.48);border-color:rgba(90,79,48,.16);color:#302c22}
+.game-room.is-day .chat-compose input::placeholder{color:#93886b}
+.game-room.is-day .chat-compose button{background:#9a7c32;border-color:#806525}
+.game-room.is-day .scene-footer{color:#716951}
+.game-room.is-day .scene-footer button{border-color:rgba(91,80,47,.2);color:#756b54}
+
+/* LOBBY CHAT */
+.lobby-chat-compose{display:flex;gap:6px;padding:8px;border-top:1px solid rgba(255,255,255,.07)}
+.lobby-chat-compose input{min-width:0;flex:1;padding:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;font-size:8px;outline:none}
+.lobby-chat-compose input:focus{border-color:rgba(157,141,255,.55)}
+.lobby-chat-compose button{padding:0 12px;border:1px solid #7062d6;border-radius:7px;background:#5147a2;color:#fff;font-size:7px;font-weight:900;letter-spacing:1px}
+.lobby-chat-compose button:disabled{opacity:.4}
+.chat .messages{overflow-y:auto}
+.message{display:flex;flex-direction:column;gap:3px;padding:7px 9px;margin:4px 7px;border-radius:8px;background:rgba(255,255,255,.035);font-size:9px;color:#c8cde0}
+.message.mine{background:rgba(113,99,211,.12);border:1px solid rgba(141,124,255,.12)}
+.message b{font-size:6px;letter-spacing:1px;color:#9c91e8}
+.message span{line-height:1.4;overflow-wrap:anywhere}
