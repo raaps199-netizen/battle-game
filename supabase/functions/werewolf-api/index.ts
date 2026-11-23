@@ -253,6 +253,74 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (body.action === "rematch") {
+      const player = await authenticate(db, body.player_id, body.session_token);
+      if (!player) return json({ error: "Invalid session" }, 403);
+
+      const { data: room, error: roomError } = await db.from("rooms")
+        .select("id,code,status,host_player_id")
+        .eq("id", player.room_id)
+        .maybeSingle();
+      if (roomError) throw roomError;
+      if (!room || room.status !== "finished" || room.host_player_id !== player.id) {
+        return json({ error: "Only the host can start a rematch after the game ends" }, 403);
+      }
+
+      const { data: roster, error: rosterError } = await db.from("players")
+        .select("id")
+        .eq("room_id", room.id)
+        .order("created_at");
+      if (rosterError) throw rosterError;
+      if (!roster || roster.length < 3 || roster.length > 20) {
+        return json({ error: "Rematch needs 3-20 players in this room" }, 400);
+      }
+
+      const [
+        { error: nightActionsError },
+        { error: votesError },
+        { error: actionsError },
+        { error: rolesError },
+        { error: chatError },
+      ] = await Promise.all([
+        db.from("night_actions").delete().eq("room_id", room.id),
+        db.from("votes").delete().eq("room_id", room.id),
+        db.from("actions").delete().eq("room_id", room.id),
+        db.from("werewolf_roles").delete().eq("room_id", room.id),
+        db.from("chat_messages").delete().eq("room_id", room.id),
+      ]);
+      if (nightActionsError) throw nightActionsError;
+      if (votesError) throw votesError;
+      if (actionsError) throw actionsError;
+      if (rolesError) throw rolesError;
+      if (chatError) throw chatError;
+
+      const { error: playersResetError } = await db.from("players")
+        .update({ is_alive: true, hp: 1 })
+        .eq("room_id", room.id);
+      if (playersResetError) throw playersResetError;
+
+      const { error: stateError } = await db.from("game_states")
+        .upsert({
+          room_id: room.id,
+          phase: "lobby",
+          resolution_version: 0,
+          last_night_summary: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "room_id" });
+      if (stateError) throw stateError;
+
+      const { data: reopened, error: reopenError } = await db.from("rooms")
+        .update({ status: "lobby", round: 1, updated_at: new Date().toISOString() })
+        .eq("id", room.id)
+        .eq("status", "finished")
+        .select("id,code,status,round,host_player_id")
+        .maybeSingle();
+      if (reopenError) throw reopenError;
+      if (!reopened) return json({ error: "This room is already being reopened" }, 409);
+
+      return json({ rematched: true, room: reopened });
+    }
+
     if (body.action === "start") {
       const player = await authenticate(db, body.player_id, body.session_token);
       if (!player) return json({ error: "Invalid session" }, 403);
