@@ -27,11 +27,12 @@ export default function GameRoom(){
  const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const [showDawn,setShowDawn]=useState(false),[showIntro,setShowIntro]=useState(false),[introShown,setIntroShown]=useState(false),[announcement,setAnnouncement]=useState<Announcement|null>(null);
  const phaseSeen=useRef<Phase|null>(null),announcementSeen=useRef("");
- const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
+ const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState(""),[chatChannel,setChatChannel]=useState<"general"|"ghost">("general");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
  const canActAtNight=["WEREWOLF","SEER","DOCTOR"].includes(myRole??"");
- const nightTargets=alive.filter(p=>myRole==="DOCTOR"||(p.id!==myId&&!allies.some(a=>a.id===p.id)));
+ const isSpectator=!!me&&!me.is_alive;
+ const nightTargets=me?.is_alive ? alive.filter(p=>myRole==="DOCTOR"||(p.id!==myId&&!allies.some(a=>a.id===p.id))) : [];
 
  useEffect(()=>{let id=sessionStorage.getItem("werewolf_player_id");if(!id){const legacyId=localStorage.getItem("werewolf_player_id");const legacyToken=localStorage.getItem("werewolf_session");if(legacyId&&legacyToken){id=legacyId;sessionStorage.setItem("werewolf_player_id",id);sessionStorage.setItem("werewolf_session",legacyToken)}}if(!id){id=crypto.randomUUID();sessionStorage.setItem("werewolf_player_id",id)}setMyId(id)},[]);
 
@@ -91,16 +92,21 @@ export default function GameRoom(){
  }
  useEffect(()=>{const playerId=sessionStorage.getItem("werewolf_player_id");if(!playerId){window.location.href="/";return}load("");},[]);
  async function loadChat(id:string){
-   const {data}=await supabase.from("chat_messages").select("id,body,player_id,created_at").eq("room_id",id).eq("channel","general").order("created_at",{ascending:true}).limit(100);
-   if(data)setMessages(data);
+   const playerId=sessionStorage.getItem("werewolf_player_id");
+   const sessionToken=sessionStorage.getItem("werewolf_session");
+   if(!playerId||!sessionToken)return;
+   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
+    action:"chat_history",room_id:id,player_id:playerId,session_token:sessionToken
+   }});
+   if(!e&&data){
+    setChatChannel(data.channel==="ghost"?"ghost":"general");
+    setMessages(Array.isArray(data.messages)?data.messages:[]);
+   }
  }
  useEffect(()=>{if(!room?.id)return;load(room.id);loadChat(room.id);
-   const c=supabase.channel("ww-"+room.id)
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:"room_id=eq."+room.id},()=>loadChat(room.id))
-    .subscribe();
    const poll=setInterval(()=>load(room.id),1500);
-   const chatPoll=setInterval(()=>loadChat(room.id),5000);
-   return()=>{clearInterval(poll);clearInterval(chatPoll);supabase.removeChannel(c)}
+   const chatPoll=setInterval(()=>loadChat(room.id),2500);
+   return()=>{clearInterval(poll);clearInterval(chatPoll)}
  },[room?.id]);
 
  useEffect(()=>{if((room?.status==="active"||room?.status==="finished")&&myId)fetchRole(myId)},[room?.status,myId,phase]);
@@ -208,7 +214,7 @@ export default function GameRoom(){
   if(!room||!myId||!message.trim())return;
   const body=message.trim();
   const {data,error:e}=await supabase.functions.invoke("werewolf-api",{body:{
-   action:"chat_send",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),message:body,channel:"general"
+   action:"chat_send",player_id:myId,session_token:sessionStorage.getItem("werewolf_session"),message:body,channel:chatChannel
   }});
   if(e||!data?.message){setError(e?.message??data?.error??"Pesan gagal dikirim.");return}
   const saved=data.message;
@@ -242,12 +248,12 @@ export default function GameRoom(){
   <header className="top game-top">
    <div className="brand">WEREWOLF<span>//</span>ONLINE</div>
    <div className="room">ROOM <b>{room.code}</b></div>
-   <div className="game-top-right"><span className="phase-pill">{showDawn?"DAWN":showIntro?"ROLE INTRO":phase.toUpperCase()} · ROUND {room.round}</span><span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
+   <div className="game-top-right"><span className="phase-pill">{showDawn?"DAWN":showIntro?"ROLE INTRO":phase.toUpperCase()} · ROUND {room.round}</span>{isSpectator && <span className="spectator-pill">SPECTATOR</span>}<span className="alive-pill"><i></i>{alive.length} ALIVE</span></div>
   </header>
   <section className="gameplay-shell">
    <div className="scene-heading">
     <span className="scene-kicker">THE FORGOTTEN VILLAGE</span>
-    <span className="scene-subtitle">{phaseSubtitle}</span>
+    <span className="scene-subtitle">{isSpectator ? "YOU HAVE FALLEN · " + phaseSubtitle : phaseSubtitle}</span>
    </div>
    <div className="arena">
     <div className="arena-stars"></div>
@@ -266,7 +272,7 @@ export default function GameRoom(){
      {players.map((p, index) => {
       const angle = (index / Math.max(players.length, 1)) * Math.PI * 2 - Math.PI / 2;
       const targetable = p.is_alive && (
-       (phase === "night" && canActAtNight && nightTargets.some((t) => t.id === p.id)) ||
+       (phase === "night" && !!me?.is_alive && canActAtNight && nightTargets.some((t) => t.id === p.id)) ||
        (phase === "voting" && !!me?.is_alive && p.id !== myId) ||
        (phase === "hunter" && myRole === "HUNTER" && !me?.is_alive)
       );
@@ -285,7 +291,7 @@ export default function GameRoom(){
         if (phase === "hunter" && targetable) setSelectedTarget(p.id);
        }}
       >
-       {bubble && phase !== "night" && <span className="speech-bubble" key={bubble.id}><b>{p.id === myId ? "YOU" : p.name}</b>{bubble.body}</span>}
+       {bubble && (phase !== "night" || isSpectator) && <span className="speech-bubble" key={bubble.id}><b>{p.id === myId ? "YOU" : p.name}</b>{bubble.body}</span>}
        <span className="avatar-halo"><span className="player-avatar">{p.is_alive ? p.name.trim().charAt(0).toUpperCase() : "✕"}</span><i className="alive-dot"></i></span>
        <span className="seat-name">{p.name}</span>
        <span className="seat-status">{p.id === myId ? "YOU" : p.is_alive ? "ALIVE" : "FALLEN"}</span>
@@ -296,45 +302,45 @@ export default function GameRoom(){
    <section className="game-dock">
     <div className="role-chip">
      <span className="role-chip-icon">{role?.icon || "?"}</span>
-     <span><small>YOUR ROLE</small><strong>{role?.name || "HIDDEN"}</strong></span>
+     <span><small>{isSpectator?"YOUR ROLE · FALLEN":"YOUR ROLE"}</small><strong>{role?.name || "HIDDEN"}</strong></span>
      <span className="role-chip-desc">{role?.desc || "Your identity is private."}</span>
     </div>
     <div className="phase-console">
      {phase === "night" && <div className="phase-console-inner">
       <div className="console-title"><span>NIGHT ACTION</span><small>{nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0} SUBMITTED</small></div>
-      <p>{myRole === "WEREWOLF" ? "Pilih warga yang akan menjadi korban. Rekan serigala: " + (allies.map(a=>a.name).join(", ") || "tidak ada") + "." : myRole === "SEER" ? "Ketuk profil pemain untuk memeriksa identitasnya." : myRole === "DOCTOR" ? "Pilih satu pemain untuk dilindungi malam ini." : "Kamu tidak memiliki aksi malam. Tunggu desa bangun."}</p>
-      {canActAtNight && <div className="selected-target"><span>TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div>}
-      {canActAtNight && <button className="primary action-submit" onClick={nightAction} disabled={busy || !selectedTarget}>{myNightAction ? "UPDATE NIGHT ACTION" : "CONFIRM ACTION"}</button>}
-      <div className="action-progress"><b>{myNightAction ? "✓ YOUR ACTION IS LOCKED IN" : canActAtNight ? "CHOOSE A PROFILE AROUND THE CIRCLE" : "WAITING FOR SPECIAL ROLES"}</b></div>
+      <p>{isSpectator ? "Kamu sudah tersingkir. Saksikan aksi malam dari pinggir desa. Kamu tidak bisa lagi memilih target atau mengubah hasil." : myRole === "WEREWOLF" ? "Pilih warga yang akan menjadi korban. Rekan serigala: " + (allies.map(a=>a.name).join(", ") || "tidak ada") + "." : myRole === "SEER" ? "Ketuk profil pemain untuk memeriksa identitasnya." : myRole === "DOCTOR" ? "Pilih satu pemain untuk dilindungi malam ini." : "Kamu tidak memiliki aksi malam. Tunggu desa bangun."}</p>
+      {canActAtNight && me?.is_alive && <div className="selected-target"><span>TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div>}
+      {canActAtNight && me?.is_alive && <button className="primary action-submit" onClick={nightAction} disabled={busy || !selectedTarget}>{myNightAction ? "UPDATE NIGHT ACTION" : "CONFIRM ACTION"}</button>}
+      <div className="action-progress"><b>{isSpectator ? "SPECTATOR MODE · YOUR ROLE IS NO LONGER ACTIVE" : myNightAction ? "✓ YOUR ACTION IS LOCKED IN" : canActAtNight ? "CHOOSE A PROFILE AROUND THE CIRCLE" : "WAITING FOR SPECIAL ROLES"}</b></div>
       {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveNight} disabled={busy}>RESOLVE NIGHT · {nightProgress?.submitted ?? 0}/{nightProgress?.required ?? 0}</button>}
      </div>}
      {phase === "resolution" && <div className="phase-console-inner"><div className="console-title"><span>THE NIGHT UNFOLDS</span><small>SERVER RESOLUTION</small></div><p>Server sedang menghitung serangan, perlindungan, dan siapa yang masih bertahan.</p></div>}
      {phase === "day" && <div className="phase-console-inner">
       <div className="console-title"><span>DAYBREAK REPORT</span><small>DISCUSSION OPEN</small></div>
-      <p>{lastNightSummary || "Matahari terbit. Desa mulai mencari tahu apa yang terjadi semalam."}</p>
+      <p>{isSpectator ? "Kamu sudah gugur. Saksikan diskusi warga dan tunggu keputusan desa." : lastNightSummary || "Matahari terbit. Desa mulai mencari tahu apa yang terjadi semalam."}</p>
       {seerResult && <div className="seer-result">🔮 HASIL RAHASIA: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name ?? seerResult.role}</b>. Hanya kamu yang melihat ini.</div>}
       <div className="console-actions">{room.host_player_id === myId && <button className="primary" onClick={startVoting} disabled={busy}>OPEN VOTING</button>}</div>
      </div>}
      {phase === "voting" && <div className="phase-console-inner">
       <div className="console-title"><span>VILLAGE VOTE</span><small>{voteProgress?.submitted ?? 0}/{voteProgress?.required ?? 0} VOTES</small></div>
-      <p>Ketuk profil pemain yang kamu curigai. Pilihanmu bisa diubah sebelum hasil dibuka.</p>
-      <div className="selected-target"><span>YOUR VOTE</span><strong>{selectedVoteName || "TAP A PLAYER PROFILE"}</strong></div>
-      <button className="primary action-submit" onClick={vote} disabled={busy || !selectedVote || !me?.is_alive}>{myVote ? "CHANGE VOTE" : "CAST VOTE"}</button>
+      <p>{isSpectator ? "Kamu sudah tersingkir dan tidak bisa ikut voting. Hasil tetap terlihat saat host membukanya." : "Ketuk profil pemain yang kamu curigai. Pilihanmu bisa diubah sebelum hasil dibuka."}</p>
+      {me?.is_alive && <><div className="selected-target"><span>YOUR VOTE</span><strong>{selectedVoteName || "TAP A PLAYER PROFILE"}</strong></div>
+      <button className="primary action-submit" onClick={vote} disabled={busy || !selectedVote}>{myVote ? "CHANGE VOTE" : "CAST VOTE"}</button></>}
       {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveVotes} disabled={busy}>REVEAL VOTES</button>}
      </div>}
      {phase === "hunter" && <div className="phase-console-inner">
       <div className="console-title"><span>HUNTER'S LAST SHOT</span><small>FINAL ABILITY</small></div>
-      <p>{myRole === "HUNTER" && !me?.is_alive ? "Pilih satu pemain hidup untuk dibawa bersamamu." : "Hunter sedang menentukan target terakhirnya."}</p>
-      {myRole === "HUNTER" && !me?.is_alive && <><div className="selected-target"><span>LAST TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget || busy}>FIRE</button></>}
+      <p>{myRole === "HUNTER" && !!me && !me.is_alive ? "Kamu adalah Hunter. Gunakan kemampuan terakhirmu untuk memilih satu pemain hidup." : isSpectator ? "Kamu telah gugur. Saksikan kemampuan terakhir Hunter dari luar permainan." : "Hunter sedang menentukan target terakhirnya."}</p>
+      {myRole === "HUNTER" && !!me && !me.is_alive && <><div className="selected-target"><span>LAST TARGET</span><strong>{selectedTargetName || "TAP A PLAYER PROFILE"}</strong></div><button className="primary action-submit" onClick={hunterAction} disabled={!selectedTarget || busy}>FIRE</button></>}
       {room.host_player_id === myId && <button className="secondary resolve-button" onClick={resolveHunter} disabled={busy}>RESOLVE HUNTER</button>}
      </div>}
      {phase === "game_over" && <div className="phase-console-inner"><div className="console-title"><span>GAME OVER</span><small>THE VILLAGE IS QUIET</small></div><p>{lastNightSummary || "Permainan selesai."}</p></div>}
     </div>
     <div className="game-chat">
-     {phase === "day" || phase === "voting" ? <>
-      <span className="chat-status"><i></i> VILLAGE CHAT</span>
-      <div className="chat-compose"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan untuk desa..." maxLength={500}/><button onClick={send} disabled={!message.trim()}>SEND</button></div>
-     </> : <div className="chat-locked"><span>☾</span> {phase === "game_over" ? "GAME CHAT CLOSED" : "VILLAGE CHAT SLEEPS DURING THE NIGHT"}</div>}
+     {room.status === "active" && (isSpectator || phase === "day" || phase === "voting") ? <>
+      <span className="chat-status"><i></i> {isSpectator ? "GHOST CHAT · THE AFTERLIFE" : "VILLAGE CHAT"}</span>
+      <div className="chat-compose"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={isSpectator ? "Kirim pesan ke para arwah..." : "Ketik pesan untuk desa..."} maxLength={500}/><button onClick={send} disabled={!message.trim()}>SEND</button></div>
+     </> : <div className="chat-locked"><span>{isSpectator?"✧":"☾"}</span> {phase === "game_over" ? "GAME CHAT CLOSED" : isSpectator ? "AFTERLIFE CHAT OPENS WHILE THE GAME CONTINUES" : "VILLAGE CHAT SLEEPS DURING THE NIGHT"}</div>}
     </div>
    </section>
    <footer className="scene-footer"><span>ROOM {room.code}</span><span>{me?.name ?? "PLAYER"} · {room.host_player_id === myId ? "HOST" : "PLAYER"}</span><button onClick={leave} disabled={busy}>LEAVE GAME</button></footer>
