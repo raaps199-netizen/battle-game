@@ -9,7 +9,6 @@ export default function GameHub() {
         <Link href="/" className="hub-brand">GOHOFog<span>•</span></Link>
         <div className="hub-nav">
           <span className="hub-nav-active">GAMES</span>
-          <span className="hub-status"><i /> LIVE PLATFORM</span>
         </div>
       </header>
       <section className="hub-hero">
@@ -54,7 +53,7 @@ export default function GameHub() {
           </div>
         </div>
       </section>
-      <footer className="hub-footer"><span>GOHOFog <b>•</b> GAME HUB</span><span>PLAY TOGETHER. THINK DIFFERENTLY.</span></footer>
+      <footer className="hub-footer"><span>PLAY TOGETHER. THINK DIFFERENTLY.</span></footer>
     </main>
   );
 }
