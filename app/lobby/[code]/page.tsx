@@ -1,7 +1,6 @@
 "use client";
 import { useEffect,useState } from "react";
 import { supabase } from "@/lib/supabase";
-import "../../../app/globals.css";
 type Player={id:string;name:string;is_alive:boolean;created_at:string};
 type Room={id:string;code:string;status:"lobby"|"active"|"finished";round:number;host_player_id:string|null};
 export default function Lobby(){
