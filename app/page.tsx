@@ -23,7 +23,7 @@ export default function Home(){
  const [allies,setAllies]=useState<{id:string;name:string}[]>([]),[seerResult,setSeerResult]=useState<{player_name:string;role:string}|null>(null);
  const [nightProgress,setNightProgress]=useState<{submitted:number;required:number}|null>(null),[myNightAction,setMyNightAction]=useState<{target_player_id:string}|null>(null);
  const [selectedTarget,setSelectedTarget]=useState(""),[lastNightSummary,setLastNightSummary]=useState("");
- const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [phase,setPhase]=useState<Phase>("lobby"),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);\n const [showIntro,setShowIntro]=useState(false);
  const [messages,setMessages]=useState<any[]>([]),[message,setMessage]=useState("");
 
  const me=players.find(p=>p.id===myId),alive=players.filter(p=>p.is_alive),role=myRole?roles[myRole]:null;
@@ -194,7 +194,7 @@ export default function Home(){
       {canActAtNight&&<div className="target-grid">{nightTargets.map(p=><button key={p.id} className={"target-choice "+(selectedTarget===p.id?"selected":"")} onClick={()=>setSelectedTarget(p.id)}>{p.name}{p.id===myId?" · YOU":""}</button>)}</div>}
       {canActAtNight&&<button className="primary action-submit" onClick={nightAction} disabled={busy||!selectedTarget}>{myNightAction?"UPDATE ACTION":"SUBMIT ACTION"}</button>}
       <div className="action-progress">{myNightAction?"✓ Aksimu sudah tersimpan.":canActAtNight?"Pilih target lalu kirim aksi.":"Menunggu pemain dengan aksi malam."} <b>{nightProgress?.submitted??0}/{nightProgress?.required??0} ACTIONS SUBMITTED</b></div>
-      {room.host_player_id===myId&&<button className="primary resolve-button" onClick={resolveNight} disabled={busy||!nightProgress||nightProgress.submitted<nightProgress.required}>RESOLVE NIGHT</button>}
+      {room.host_player_id===myId&&<div className="host-resolve"><button className="primary resolve-button" onClick={resolveNight} disabled={busy}>RESOLVE NIGHT</button><small>{nightProgress?`${nightProgress.submitted}/${nightProgress.required} aksi wajib terkirim`:"Menunggu status aksi..."}</small></div>}
     </div>}
     {phase==="resolution"&&<div className="day-card"><strong>RESOLVING NIGHT</strong><p>Server sedang menghitung pilihan, perlindungan, korban, dan kondisi menang.</p></div>}
     {phase==="day"&&<div className="day-card"><strong>THE VILLAGE WAKES</strong><p>{lastNightSummary||"Malam telah selesai."}</p>{seerResult&&<div className="seer-result">HASIL PEMERIKSAAN: <b>{seerResult.player_name}</b> adalah <b>{roles[seerResult.role]?.name??seerResult.role}</b>. Hanya kamu yang melihat ini.</div>}<p className="day-hint">Diskusi desa dibuka. Voting akan masuk milestone berikutnya.</p></div>}
@@ -204,7 +204,7 @@ export default function Home(){
   <aside className="panel chat"><div className="panel-head">VILLAGE CHAT <span>LIVE</span></div><div className="messages">{messages.map(m=><div className="msg" key={m.id}><b>{players.find(p=>p.id===m.player_id)?.name??"PLAYER"}</b><p>{m.body}</p></div>)}{!messages.length&&<div className="empty">Belum ada pesan.</div>}</div>
    {(phase==="lobby"||phase==="day"||phase==="voting")?<div className="chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ketik pesan..." maxLength={500}/><button onClick={send}>SEND</button></div>:<div className="chat-closed">Village chat ditutup selama malam.</div>}
   </aside>
- </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>REALTIME CONNECTED</span></footer>
+ </section><footer className="bottom"><span>PLAYER: {me?.name??"-"}</span><span>ROLE: {myRole?role?.name.toUpperCase():"PRIVATE"}</span><span>{room.host_player_id===myId?"HOST":"PLAYER"} · REALTIME CONNECTED</span></footer>\n {showIntro&&<div className="intro-overlay"><div className="intro-card"><div className="intro-mark">☾</div><div className="eyebrow">WEREWOLF // ONLINE</div><h2>THE NIGHT BEGINS</h2><p>Desa sudah tertidur. Di antara kalian ada Werewolf yang sedang mencari korban.</p><div className="intro-rules"><div><b>01</b><span>Jaga identitasmu tetap rahasia.</span></div><div><b>02</b><span>Gunakan kemampuanmu saat malam.</span></div><div><b>03</b><span>Saat siang, diskusikan siapa yang mencurigakan.</span></div></div><div className="intro-role"><span>YOUR SECRET ROLE</span><strong>{role?.icon} {role?.name??"..."}</strong><small>{role?.desc??"Role sedang disiapkan oleh server."}</small></div><button className="primary intro-button" onClick={()=>setShowIntro(false)}>ENTER THE NIGHT</button></div></div>}
  {notice&&<div className="toast">✓ {notice}</div>}{error&&<div className="toast error-toast">{error}</div>}
  </main>
 }
