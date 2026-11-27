@@ -118,6 +118,19 @@ Deno.serve(async (req: Request) => {
         players:playersResult.data ?? [],self_id:player.id
       });
     }
+    if (body.action === "leave") {
+      const deletion = await client.from("exhibit_players").delete().eq("id",player.id);
+      if (deletion.error) throw deletion.error;
+      const remaining = await client.from("exhibit_players").select("id").eq("room_id",room.id).order("created_at");
+      if (remaining.error) throw remaining.error;
+      if (!remaining.data || remaining.data.length===0) {
+        await client.from("exhibit_rooms").delete().eq("id",room.id);
+      } else if (room.host_player_id===player.id) {
+        await client.from("exhibit_rooms").update({host_player_id:remaining.data[0].id}).eq("id",room.id);
+      }
+      return reply({ok:true});
+    }
+
     if (room.status !== "active") return reply({error:"Permainan sudah berakhir."},409);
 
     if (body.action === "move") {
