@@ -13,7 +13,7 @@ type ExhibitPlayer = {
 type GameSnapshot = {
   room: {
     id: string; code: string; status: "active" | "completed" | "expired";
-    host_player_id: string; state: { security_solved: boolean; archive_unlocked: boolean; clue_found: boolean };
+    host_player_id: string; state: { security_solved: boolean; archive_unlocked: boolean; clue_found: boolean; inventory_found: boolean; opening_found: boolean };
     expires_at: string;
   };
   players: ExhibitPlayer[];
@@ -292,9 +292,8 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
 
   const playerList = snapshot?.players ?? [];
   const self = playerList.find(p => p.id === session.player_id);
-  const evidence = self?.evidence ?? [];
+  const evidence = [...new Set(playerList.flatMap(player => player.evidence ?? []))];
   const inventory = self?.inventory ?? [];
-  const mainClues = evidence.filter(item => item.startsWith("Nomor") || item.startsWith("Jam buka"));
   const closeTo = (point: Position) => Math.hypot(myPos.x - point.x, myPos.y - point.y) <= 20;
 
   async function doAction(target: string) {
@@ -401,8 +400,8 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
             <h3>Recover the Kompas Arunika</h3>
             <p>It vanished during a blackout. Collect the evidence, access Security, then open the Archive.</p>
             <div className="exhibit-progress">
-              <div className={mainClues.some(v => v.startsWith("Nomor")) ? "done" : ""}><i>1</i><span>Find exhibit number</span></div>
-              <div className={mainClues.some(v => v.startsWith("Jam buka")) ? "done" : ""}><i>2</i><span>Find opening time</span></div>
+              <div className={snapshot?.room.state.inventory_found ? "done" : ""}><i>1</i><span>Find exhibit number</span></div>
+              <div className={snapshot?.room.state.opening_found ? "done" : ""}><i>2</i><span>Find opening time</span></div>
               <div className={snapshot?.room.state.security_solved ? "done" : ""}><i>3</i><span>Unlock Security panel</span></div>
               <div className={snapshot?.room.state.clue_found ? "done" : ""}><i>4</i><span>Read the final clue</span></div>
             </div>
@@ -503,8 +502,8 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
           <h2>Restore archive access</h2>
           <p>Enter the four-digit sequence formed by the exhibit number and the museum opening time.</p>
           <div className="exhibit-code-hints">
-            <span>EXHIBIT NO. <b>{evidence.some(v=>v.startsWith("Nomor")) ? "43" : "??"}</b></span>
-            <span>OPENING <b>{evidence.some(v=>v.startsWith("Jam buka")) ? "09" : "??"}</b></span>
+            <span>EXHIBIT NO. <b>{snapshot?.room.state.inventory_found ? "43" : "??"}</b></span>
+            <span>OPENING <b>{snapshot?.room.state.opening_found ? "09" : "??"}</b></span>
           </div>
           <input value={answer} onChange={e=>setAnswer(e.target.value.replace(/\D/g,"").slice(0,4))} placeholder="_ _ _ _" inputMode="numeric" maxLength={4} autoFocus />
           <button className="exhibit-primary" disabled={busy || answer.length!==4}>{busy ? "CHECKING..." : "UNLOCK ARCHIVE"}</button>
