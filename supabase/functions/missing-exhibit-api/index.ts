@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
 
     const player = await getPlayer(client,body.player_id,body.session_token);
     if (!player) return reply({error:"Sesi pemain tidak valid. Masuk ke room lagi."},403);
-    const foundRoom = await client.from("exhibit_rooms").select("id,code,status,host_player_id,state,expires_at")
+    const foundRoom = await client.from("exhibit_rooms").select("id,code,status,host_player_id,state,expires_at,inventory_found,opening_found")
       .eq("id",player.room_id).single();
     if (foundRoom.error) throw foundRoom.error;
     const room = foundRoom.data;
