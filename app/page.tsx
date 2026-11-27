@@ -27,7 +27,7 @@ export default function GameHub() {
       </section>
       <section className="hub-library">
         <div className="hub-section-head">
-          <div><span className="hub-section-kicker">THE LIBRARY</span><h2>Games <span>01</span></h2></div>
+          <div><span className="hub-section-kicker">THE LIBRARY</span><h2>Games <span>02</span></h2></div>
           <span className="hub-section-note">CHOOSE YOUR NEXT MATCH</span>
         </div>
         <div className="hub-game-grid">
@@ -41,6 +41,18 @@ export default function GameHub() {
             </div>
             <div className="hub-card-info">
               <div><span className="hub-card-tag"><i /> AVAILABLE NOW</span><h3>Werewolf</h3><p>Read the room. Find the liar. Survive the night.</p></div>
+              <span className="hub-card-arrow">↗</span>
+            </div>
+          </Link>
+          <Link href="/games/missing-exhibit" className="hub-game-card">
+            <div className="hub-card-art exhibit-card-art">
+              <div className="exhibit-card-halo" />
+              <div className="exhibit-card-frame"><span>◈</span><i>CASE 001</i></div>
+              <span className="hub-card-index">02 / CO-OP MYSTERY</span>
+              <span className="hub-card-play">PLAY <b>↗</b></span>
+            </div>
+            <div className="hub-card-info">
+              <div><span className="hub-card-tag"><i /> AVAILABLE NOW</span><h3>The Missing Exhibit</h3><p>Explore the museum. Solve the mystery together.</p></div>
               <span className="hub-card-arrow">↗</span>
             </div>
           </Link>
