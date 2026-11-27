@@ -106,19 +106,19 @@ export default function MissingExhibitPage() {
       </header>
       <section className="exhibit-entry-grid">
         <div className="exhibit-entry-art">
-          <span className="exhibit-kicker">A CO-OP MYSTERY · 3 ROOMS · 10 MINUTES</span>
+          <span className="exhibit-kicker">CO-OP MYSTERY · 3 ROOMS</span>
           <div className="exhibit-entry-orb">◈</div>
           <div className="exhibit-entry-copy">
             <p>THE MUSEUM ISN'T EMPTY.</p>
             <h1>THE MISSING<br /><em>EXHIBIT</em></h1>
-            <span>Kompas Arunika disappeared during a blackout. Find the evidence, unlock the archive, and discover where it was sent.</span>
+            <span>Find the clues. Unlock the Archive. Solve the case.</span>
           </div>
           <div className="exhibit-art-foot"><span>CASE FILE 001</span><span>KLAPANUNGGAL MUSEUM · 22:10</span></div>
         </div>
         <div className="exhibit-entry-panel">
-          <div className="exhibit-kicker">JOIN THE INVESTIGATION</div>
-          <h2>Ready, detective?</h2>
-          <p className="exhibit-subcopy">Create a room for your friends or enter a six-character code.</p>
+          <div className="exhibit-kicker">JOIN ROOM</div>
+          <h2>Enter the museum</h2>
+          <p className="exhibit-subcopy">Create a room or join with a code.</p>
           <label htmlFor="exhibit-name">YOUR NAME</label>
           <input id="exhibit-name" value={name} onChange={e => setName(e.target.value)} maxLength={20} placeholder="Detective name" />
           <button className="exhibit-primary" onClick={() => enter("create")} disabled={busy}>
@@ -131,7 +131,7 @@ export default function MissingExhibitPage() {
             <button onClick={() => enter("join")} disabled={busy}>JOIN</button>
           </div>
           {error && <div className="exhibit-error">{error}</div>}
-          <div className="exhibit-entry-meta"><span>UP TO 8 PLAYERS</span><span>10:00 TIME LIMIT</span><span>CO-OP ONLY</span></div>
+          <div className="exhibit-entry-meta"><span>2–8 PLAYERS</span><span>10 MINUTES</span></div>
         </div>
       </section>
     </main>
