@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type PointerEvent } from "react";
 import { supabase } from "@/lib/supabase";
 
 type RoomKey = "main" | "security" | "archive";
@@ -217,14 +217,12 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
     let lastUi = 0;
     let lastBroadcast = 0;
     let lastPersist = 0;
-    let lastX = positionRef.current.x;
-    let lastY = positionRef.current.y;
 
     const keyDown = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       const key = event.key.toLowerCase();
-      if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+      if (["w", "a", "s", "d", "shift", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
         event.preventDefault();
         keysRef.current.add(key);
       }
@@ -278,8 +276,6 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
           }).catch(err => setStatus(err instanceof Error ? err.message : "Posisi gagal disimpan."));
           lastPersist = now;
         }
-        lastX = positionRef.current.x;
-        lastY = positionRef.current.y;
       } else if (now - lastUi > 180) {
         setMyPos({ ...positionRef.current });
         lastUi = now;
@@ -348,7 +344,7 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
     } finally { setBusy(false); }
   }
 
-  async function solvePanel(event: React.FormEvent<HTMLFormElement>) {
+  async function solvePanel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {
@@ -366,7 +362,15 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
     } finally { setBusy(false); }
   }
 
-  function joystick(event: React.PointerEvent<HTMLDivElement>) {
+
+  async function leaveGame() {
+    try {
+      await callApi({ action: "leave", player_id: session.player_id, session_token: session.session_token });
+    } catch {}
+    onExit();
+  }
+
+  function joystick(event: PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const dx = (event.clientX - (rect.left + rect.width / 2)) / (rect.width * 0.35);
     const dy = (event.clientY - (rect.top + rect.height / 2)) / (rect.height * 0.35);
@@ -488,7 +492,7 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
             <div className="exhibit-panel-title">ROOM</div>
             <div className="exhibit-room-code-large">{session.code}</div>
             <button className="exhibit-copy" onClick={() => { void navigator.clipboard?.writeText(session.code); setStatus("Room code copied."); }}>COPY ROOM CODE</button>
-            <button className="exhibit-exit" onClick={onExit}>LEAVE GAME</button>
+            <button className="exhibit-exit" onClick={() => void leaveGame()}>LEAVE GAME</button>
           </section>
         </aside>
       </div>
@@ -514,7 +518,7 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
           <div className="exhibit-finish-icon">{completed ? "◈" : "⌛"}</div>
           <h2>{completed ? "THE CLUE IS FOUND" : "TIME'S UP"}</h2>
           <p>{completed ? "The records reveal that Kompas Arunika was scheduled for shipment at 22:30 through the North Dock. The investigation has uncovered the next lead." : "The museum's transport window has passed. The team ran out of time before finding the final record."}</p>
-          <button className="exhibit-primary" onClick={onExit}>RETURN TO GAME HUB</button>
+          <button className="exhibit-primary" onClick={() => void leaveGame()}>RETURN TO GAME HUB</button>
         </div>
       </div>}
     </main>
