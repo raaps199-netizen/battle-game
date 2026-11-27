@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "GOHOFog · Game Hub",
-  description: "Play multiplayer games with friends. Start with Werewolf."
+  description: "Play multiplayer games with friends, from social deduction to co-op mysteries."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
