@@ -59,9 +59,9 @@ Deno.serve(async (req: Request) => {
       if (body.action === "create") {
         for (let i=0;i<6;i++) {
           const result = await client.from("exhibit_rooms").insert({
-            code: makeCode(), status:"active",
+            code: makeCode(), status:"waiting",
             state:{security_solved:false,archive_unlocked:false,clue_found:false},
-            expires_at:new Date(Date.now()+10*60*1000).toISOString()
+            expires_at:new Date(Date.now()+30*60*1000).toISOString()
           }).select("id,code,status,host_player_id,state,expires_at").single();
           if (!result.error) { room=result.data; break; }
           if (result.error.code !== "23505") throw result.error;
@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
         const found = await client.from("exhibit_rooms").select("*").eq("code",code).maybeSingle();
         if (found.error) throw found.error;
         room = found.data;
-        if (!room || room.status !== "active") return reply({error:"Room tidak ditemukan atau sudah selesai."},404);
+        if (!room || room.status !== "waiting") return reply({error:"Room tidak ditemukan atau investigasi sudah dimulai."},404);
         if (new Date(room.expires_at).getTime() <= Date.now()) {
           await client.from("exhibit_rooms").update({status:"expired"}).eq("id",room.id);
           return reply({error:"Waktu room sudah habis."},410);
@@ -110,7 +110,7 @@ Deno.serve(async (req: Request) => {
     await client.from("exhibit_players").update({last_seen:new Date().toISOString()}).eq("id",player.id);
 
     if (body.action === "snapshot") {
-      if (room.status === "active" && new Date(room.expires_at).getTime() <= Date.now()) {
+      if ((room.status === "active" || room.status === "waiting") && new Date(room.expires_at).getTime() <= Date.now()) {
         await client.from("exhibit_rooms").update({status:"expired"}).eq("id",room.id);
         room.status = "expired";
       }
@@ -135,6 +135,23 @@ Deno.serve(async (req: Request) => {
         await client.from("exhibit_rooms").update({host_player_id:remaining.data[0].id}).eq("id",room.id);
       }
       return reply({ok:true});
+    }
+
+    if (body.action === "start") {
+      if (room.status !== "waiting") return reply({error:"Room ini sudah dimulai atau ditutup."},409);
+      if (room.host_player_id !== player.id) return reply({error:"Hanya host yang bisa memulai investigasi."},403);
+      const {count,error:countError} = await client.from("exhibit_players")
+        .select("id",{count:"exact",head:true}).eq("room_id",room.id);
+      if (countError) throw countError;
+      if ((count ?? 0) < 2) return reply({error:"Butuh minimal 2 pemain untuk memulai."},400);
+      const startedAt = Date.now();
+      const started = await client.from("exhibit_rooms")
+        .update({status:"active",expires_at:new Date(startedAt+10*60*1000).toISOString(),updated_at:new Date().toISOString()})
+        .eq("id",room.id).eq("status","waiting").eq("host_player_id",player.id)
+        .select("id").maybeSingle();
+      if (started.error) throw started.error;
+      if (!started.data) return reply({error:"Room sudah berubah. Muat ulang lobby."},409);
+      return reply({ok:true,message:"Investigasi dimulai."});
     }
 
     if (room.status !== "active") return reply({error:"Permainan sudah berakhir."},409);
