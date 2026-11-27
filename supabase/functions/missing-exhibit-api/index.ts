@@ -23,8 +23,14 @@ function makeCode() {
   crypto.getRandomValues(data);
   return [...data].map(v => chars[v % chars.length]).join("");
 }
-function safeState(v: Record<string, unknown>) {
-  return { security_solved: v.security_solved === true, archive_unlocked: v.archive_unlocked === true, clue_found: v.clue_found === true };
+function safeState(v: Record<string, unknown>, inventoryFound = false, openingFound = false) {
+  return {
+    security_solved: v.security_solved === true,
+    archive_unlocked: v.archive_unlocked === true,
+    clue_found: v.clue_found === true,
+    inventory_found: inventoryFound,
+    opening_found: openingFound,
+  };
 }
 function near(player: {x:number;y:number}, x:number, y:number) {
   return Math.hypot(player.x - x, player.y - y) <= 20;
@@ -90,7 +96,7 @@ Deno.serve(async (req: Request) => {
       }
       return reply({
         room:{id:room.id,code:room.code,status:room.status,host_player_id:room.host_player_id,
-          state:safeState(room.state ?? {}),expires_at:room.expires_at},
+          state:safeState(room.state ?? {}, room.inventory_found, room.opening_found),expires_at:room.expires_at},
         player_id:playerId,session_token:sessionToken
       });
     }
@@ -114,7 +120,7 @@ Deno.serve(async (req: Request) => {
       if (playersResult.error) throw playersResult.error;
       return reply({
         room:{id:room.id,code:room.code,status:room.status,host_player_id:room.host_player_id,
-          state:safeState(room.state ?? {}),expires_at:room.expires_at},
+          state:safeState(room.state ?? {}, room.inventory_found, room.opening_found),expires_at:room.expires_at},
         players:playersResult.data ?? [],self_id:player.id
       });
     }
@@ -168,17 +174,25 @@ Deno.serve(async (req: Request) => {
 
       if (target==="display_label") {
         if (player.room_key!=="main" || !near(player,31,43)) return reply({error:"Dekati plakat pameran dulu."},400);
-        const update = await client.from("exhibit_players").update({evidence:add(evidence,"Nomor inventaris: 43")}).eq("id",player.id);
-        if (update.error) throw update.error;
-        message = "Petunjuk ditemukan: nomor inventaris artefak adalah 43.";
+        const [playerUpdate, roomUpdate] = await Promise.all([
+          client.from("exhibit_players").update({evidence:add(evidence,"Nomor inventaris: 43")}).eq("id",player.id),
+          client.from("exhibit_rooms").update({inventory_found:true,updated_at:new Date().toISOString()}).eq("id",room.id)
+        ]);
+        if (playerUpdate.error) throw playerUpdate.error;
+        if (roomUpdate.error) throw roomUpdate.error;
+        message = "Petunjuk ditemukan: nomor inventaris artefak adalah 43. Semua investigator bisa melihat petunjuk ini.";
       } else if (target==="opening_hours") {
         if (player.room_key!=="main" || !near(player,69,43)) return reply({error:"Dekati papan informasi dulu."},400);
-        const update = await client.from("exhibit_players").update({evidence:add(evidence,"Jam buka: 09.00")}).eq("id",player.id);
-        if (update.error) throw update.error;
-        message = "Petunjuk ditemukan: museum mulai buka pukul 09.00.";
+        const [playerUpdate, roomUpdate] = await Promise.all([
+          client.from("exhibit_players").update({evidence:add(evidence,"Jam buka: 09.00")}).eq("id",player.id),
+          client.from("exhibit_rooms").update({opening_found:true,updated_at:new Date().toISOString()}).eq("id",room.id)
+        ]);
+        if (playerUpdate.error) throw playerUpdate.error;
+        if (roomUpdate.error) throw roomUpdate.error;
+        message = "Petunjuk ditemukan: museum mulai buka pukul 09.00. Semua investigator bisa melihat petunjuk ini.";
       } else if (target==="security_panel") {
         if (player.room_key!=="security" || !near(player,50,44)) return reply({error:"Dekati panel akses dulu."},400);
-        if (state.security_solved!==true && (!evidence.includes("Nomor inventaris: 43") || !evidence.includes("Jam buka: 09.00"))) {
+        if (state.security_solved!==true && (!room.inventory_found || !room.opening_found)) {
           return reply({error:"Kumpulkan dua petunjuk di Main Hall sebelum mencoba panel."},400);
         }
         if (String(body.answer ?? "").trim()!=="4309") return reply({error:"Kode salah. Gabungkan nomor inventaris dan jam buka."},400);
