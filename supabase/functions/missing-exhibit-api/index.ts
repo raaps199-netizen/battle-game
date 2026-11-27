@@ -197,7 +197,7 @@ Deno.serve(async (req: Request) => {
         ]);
         if (playerUpdate.error) throw playerUpdate.error;
         if (roomUpdate.error) throw roomUpdate.error;
-        message = "Petunjuk ditemukan: nomor inventaris artefak adalah 43. Semua investigator bisa melihat petunjuk ini.";
+        message = "Nomor inventaris ditemukan: 43.";
       } else if (target==="opening_hours") {
         if (player.room_key!=="main" || !near(player,69,43)) return reply({error:"Dekati papan informasi dulu."},400);
         const [playerUpdate, roomUpdate] = await Promise.all([
@@ -206,7 +206,7 @@ Deno.serve(async (req: Request) => {
         ]);
         if (playerUpdate.error) throw playerUpdate.error;
         if (roomUpdate.error) throw roomUpdate.error;
-        message = "Petunjuk ditemukan: museum mulai buka pukul 09.00. Semua investigator bisa melihat petunjuk ini.";
+        message = "Jam buka ditemukan: 09.00.";
       } else if (target==="security_panel") {
         if (player.room_key!=="security" || !near(player,50,44)) return reply({error:"Dekati panel akses dulu."},400);
         if (state.security_solved!==true && (!room.inventory_found || !room.opening_found)) {
@@ -219,7 +219,7 @@ Deno.serve(async (req: Request) => {
         ]);
         if (pUpdate.error) throw pUpdate.error;
         if (rUpdate.error) throw rUpdate.error;
-        message = "Panel terbuka. Keycard didapat dan pintu Archive berhasil dibuka.";
+        message = "Panel terbuka. Keycard didapat.";
       } else if (target==="archive_clue") {
         if (player.room_key!=="archive" || !near(player,50,45)) return reply({error:"Dekati meja dokumen dulu."},400);
         if (state.archive_unlocked!==true) return reply({error:"Archive masih terkunci."},403);
@@ -229,7 +229,7 @@ Deno.serve(async (req: Request) => {
         ]);
         if (pUpdate.error) throw pUpdate.error;
         if (rUpdate.error) throw rUpdate.error;
-        message = "Clue utama ditemukan: Kompas Arunika dijadwalkan dikirim pukul 22.30 melalui Dermaga Utara.";
+        message = "Catatan pengiriman: 22.30, Dermaga Utara.";
       } else {
         return reply({error:"Objek tidak dikenal."},400);
       }
