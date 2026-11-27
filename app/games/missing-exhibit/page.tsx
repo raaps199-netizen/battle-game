@@ -12,7 +12,7 @@ type ExhibitPlayer = {
 };
 type GameSnapshot = {
   room: {
-    id: string; code: string; status: "active" | "completed" | "expired";
+    id: string; code: string; status: "waiting" | "active" | "completed" | "expired";
     host_player_id: string; state: { security_solved: boolean; archive_unlocked: boolean; clue_found: boolean; inventory_found: boolean; opening_found: boolean };
     expires_at: string;
   };
@@ -144,6 +144,7 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
   const [myPos, setMyPos] = useState<Position>({ x: 50, y: 74 });
   const [status, setStatus] = useState("Masuk ke museum...");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [inspectPopup, setInspectPopup] = useState<{ title: string; body: string } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [seconds, setSeconds] = useState(600);
@@ -195,7 +196,7 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
         if (state === "SUBSCRIBED") void loadSnapshot();
       });
     channelRef.current = channel;
-    const refresh = window.setInterval(() => { void loadSnapshot(); }, 5000);
+    const refresh = window.setInterval(() => { void loadSnapshot(); }, 2500);
     return () => {
       window.clearInterval(refresh);
       void supabase.removeChannel(channel);
@@ -204,14 +205,15 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
   }, [session.code, loadSnapshot]);
 
   useEffect(() => {
-    if (!snapshot?.room.expires_at) return;
+    if (snapshot?.room.status !== "active" || !snapshot.room.expires_at) return;
     const update = () => setSeconds(Math.max(0, Math.ceil((new Date(snapshot.room.expires_at).getTime() - Date.now()) / 1000)));
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
-  }, [snapshot?.room.expires_at]);
+  }, [snapshot?.room.expires_at, snapshot?.room.status]);
 
   useEffect(() => {
+    if (snapshot?.room.status !== "active") return;
     let frame = 0;
     let previous = 0;
     let lastUi = 0;
@@ -288,12 +290,13 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
     };
-  }, [session]);
+  }, [session, snapshot?.room.status]);
 
   const playerList = snapshot?.players ?? [];
   const self = playerList.find(p => p.id === session.player_id);
   const evidence = [...new Set(playerList.flatMap(player => player.evidence ?? []))];
   const inventory = self?.inventory ?? [];
+  const isHost = snapshot?.room.host_player_id === session.player_id;
   const closeTo = (point: Position) => Math.hypot(myPos.x - point.x, myPos.y - point.y) <= 20;
 
   async function doAction(target: string) {
@@ -335,7 +338,13 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
         action: "interact", target,
         player_id: session.player_id, session_token: session.session_token,
       });
-      setStatus(data.message ?? "Interaksi berhasil.");
+      const titles: Record<string, string> = {
+        display_label: "Exhibit label",
+        opening_hours: "Museum information",
+        archive_clue: "Delivery record",
+      };
+      setInspectPopup({ title: titles[target] ?? "Evidence found", body: data.message ?? "Clue collected." });
+      setStatus("Evidence updated.");
       await loadSnapshot();
       broadcastState();
     } catch (err) {
@@ -351,9 +360,10 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
         action: "interact", target: "security_panel", answer,
         player_id: session.player_id, session_token: session.session_token,
       });
-      setStatus(data.message ?? "Panel berhasil dibuka.");
+      setStatus("Archive unlocked.");
       setPanelOpen(false);
       setAnswer("");
+      setInspectPopup({ title: "Access granted", body: data.message ?? "Keycard acquired." });
       await loadSnapshot();
       broadcastState();
     } catch (err) {
@@ -361,6 +371,20 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
     } finally { setBusy(false); }
   }
 
+
+  async function startGame() {
+    setBusy(true);
+    setStatus("");
+    try {
+      await callApi({ action: "start", player_id: session.player_id, session_token: session.session_token });
+      await loadSnapshot();
+      broadcastState();
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Could not start.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function leaveGame() {
     try {
@@ -377,13 +401,53 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
     stickRef.current = { x: Math.max(-1, Math.min(1, dx / Math.max(1, length))), y: Math.max(-1, Math.min(1, dy / Math.max(1, length))) };
   }
 
-  const expired = snapshot?.room.status === "expired" || seconds === 0;
+  const expired = snapshot?.room.status === "expired" || (snapshot?.room.status === "active" && seconds === 0);
   const completed = snapshot?.room.status === "completed" || snapshot?.room.state.clue_found;
-  const roomHint = roomKey === "main"
-    ? "Temukan dua petunjuk sebelum menuju Security Room."
-    : roomKey === "security"
-      ? "Gabungkan kedua petunjuk untuk mendapatkan Keycard."
-      : "Periksa dokumen terakhir untuk mengetahui tujuan Kompas Arunika.";
+
+  if (!snapshot) {
+    return <main className="exhibit-loading"><div className="exhibit-loading-mark">◈</div><p>Connecting to room...</p></main>;
+  }
+
+  if (snapshot.room.status === "waiting") {
+    return (
+      <main className="exhibit-lobby">
+        <header className="exhibit-entry-top">
+          <Link href="/" className="exhibit-logo">GOHOFog<span>•</span></Link>
+          <span className="exhibit-lobby-title">THE MISSING EXHIBIT</span>
+          <button className="exhibit-back" onClick={() => void leaveGame()}>LEAVE</button>
+        </header>
+        <section className="exhibit-lobby-card">
+          <span className="exhibit-kicker">PRIVATE ROOM</span>
+          <h1>Waiting room</h1>
+          <div className="exhibit-room-code-card">
+            <span>{session.code}</span>
+            <button onClick={() => { void navigator.clipboard?.writeText(session.code); setStatus("Code copied."); }}>COPY</button>
+          </div>
+          <div className="exhibit-waiting-roster">
+            <div className="exhibit-waiting-head"><strong>Players</strong><span>{playerList.length}/8</span></div>
+            <div className="exhibit-waiting-grid">
+              {playerList.map((player) => (
+                <div className={"exhibit-waiting-player " + (player.id === session.player_id ? "is-you" : "")} key={player.id}>
+                  <b>{player.name.slice(0, 1).toUpperCase()}</b>
+                  <span>{player.name}{player.id === session.player_id ? " (YOU)" : ""}</span>
+                  {player.id === snapshot.room.host_player_id && <i>HOST</i>}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="exhibit-lobby-footer">
+            <p>{isHost ? (playerList.length < 2 ? "Invite one more player to begin." : "Your team is ready.") : "Waiting for the host to begin."}</p>
+            {isHost ? (
+              <button className="exhibit-primary" onClick={() => void startGame()} disabled={busy || playerList.length < 2}>
+                {busy ? "STARTING..." : "START INVESTIGATION"} <span>↗</span>
+              </button>
+            ) : <div className="exhibit-host-wait">WAITING FOR HOST</div>}
+            {status && <small>{status}</small>}
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="exhibit-game">
@@ -395,17 +459,6 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
 
       <div className="exhibit-game-layout">
         <aside className="exhibit-left-rail">
-          <section className="exhibit-panel exhibit-objective">
-            <div className="exhibit-panel-title">CURRENT OBJECTIVE <span>01 / 03</span></div>
-            <h3>Recover the Kompas Arunika</h3>
-            <p>It vanished during a blackout. Collect the evidence, access Security, then open the Archive.</p>
-            <div className="exhibit-progress">
-              <div className={snapshot?.room.state.inventory_found ? "done" : ""}><i>1</i><span>Find exhibit number</span></div>
-              <div className={snapshot?.room.state.opening_found ? "done" : ""}><i>2</i><span>Find opening time</span></div>
-              <div className={snapshot?.room.state.security_solved ? "done" : ""}><i>3</i><span>Unlock Security panel</span></div>
-              <div className={snapshot?.room.state.clue_found ? "done" : ""}><i>4</i><span>Read the final clue</span></div>
-            </div>
-          </section>
           <section className="exhibit-panel exhibit-people">
             <div className="exhibit-panel-title">INVESTIGATORS <span>{playerList.length}/8</span></div>
             {playerList.map((player, index) => (
@@ -418,14 +471,13 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
           </section>
           <section className="exhibit-panel exhibit-bag">
             <div className="exhibit-panel-title">INVENTORY</div>
-            {inventory.length === 0 ? <p className="exhibit-empty">Your bag is empty.</p> : inventory.map(item => <div className="exhibit-item" key={item}><span>▣</span>{item}</div>)}
+            {inventory.length === 0 ? <p className="exhibit-empty">Empty</p> : inventory.map(item => <div className="exhibit-item" key={item}><span>▣</span>{item}</div>)}
           </section>
         </aside>
 
         <section className="exhibit-center">
           <div className="exhibit-map-heading">
-            <div><span>YOU ARE IN</span><h1>{roomNames[roomKey]}</h1></div>
-            <p>{roomHint}</p>
+            <div><span>ROOM</span><h1>{roomNames[roomKey]}</h1></div>
           </div>
           <div className={"exhibit-world exhibit-world-" + roomKey}>
             <div className="exhibit-floor-grid" />
@@ -459,22 +511,22 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
                 <b>{player.name.slice(0,1).toUpperCase()}</b><span>{player.id === session.player_id ? "YOU" : player.name}</span>
               </div>;
             })}
-            <div className="exhibit-world-corner">LIVE CO-OP MAP <span>•</span> {playerList.filter(p=>p.room_key===roomKey).length} HERE</div>
+            <div className="exhibit-world-corner">{playerList.filter(p=>p.room_key===roomKey).length} HERE</div>
           </div>
           <div className="exhibit-controls">
             <div className="exhibit-joystick" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);joystick(e);}} onPointerMove={e=>{if(e.buttons)joystick(e);}} onPointerUp={()=>{stickRef.current={x:0,y:0};}} onPointerCancel={()=>{stickRef.current={x:0,y:0};}}>
               <span className="joystick-north">▲</span><span className="joystick-south">▼</span><span className="joystick-west">◀</span><span className="joystick-east">▶</span><b />
             </div>
-            <div className="exhibit-control-copy"><strong>MOVE</strong><span>Drag the joystick or use WASD / arrow keys.</span><small>Hold SHIFT to sprint · Tap an object to walk toward it, then tap again to interact.</small></div>
+            <div className="exhibit-control-copy"><strong>MOVE</strong><span>Joystick · WASD</span><small>SHIFT · Sprint</small></div>
             <div className="exhibit-control-badge">2D<br /><b>CO-OP</b></div>
           </div>
-          <div className="exhibit-status-line"><span className="exhibit-live-dot" />{status}</div>
+          {status && <div className="exhibit-status-line" role="status">{status}</div>}
         </section>
 
         <aside className="exhibit-right-rail">
           <section className="exhibit-panel exhibit-evidence">
             <div className="exhibit-panel-title">EVIDENCE BOARD <span>{evidence.length} FOUND</span></div>
-            {evidence.length === 0 ? <div className="exhibit-evidence-empty"><b>⌕</b><p>No evidence collected yet.</p><small>Inspect objects in the Main Hall.</small></div> : evidence.map((item,index)=><div className="exhibit-evidence-card" key={item}><i>0{index+1}</i><span>{item}</span><b>✓</b></div>)}
+            {evidence.length === 0 ? <div className="exhibit-evidence-empty"><b>⌕</b><p>No evidence yet.</p></div> : evidence.map((item,index)=><div className="exhibit-evidence-card" key={item}><i>0{index+1}</i><span>{item}</span><b>✓</b></div>)}
           </section>
           <section className="exhibit-panel exhibit-room-map">
             <div className="exhibit-panel-title">MUSEUM DIRECTORY</div>
@@ -485,10 +537,10 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
               <div className="mini-connector horizontal" />
               <div className={"mini-room mini-main "+(roomKey==="main"?"current":"")}>MAIN HALL</div>
             </div>
-            <p className="exhibit-map-foot">{snapshot?.room.state.archive_unlocked ? "All doors are now accessible." : "Archive access requires a Keycard."}</p>
+            
           </section>
           <section className="exhibit-panel exhibit-room-actions">
-            <div className="exhibit-panel-title">ROOM</div>
+            
             <div className="exhibit-room-code-large">{session.code}</div>
             <button className="exhibit-copy" onClick={() => { void navigator.clipboard?.writeText(session.code); setStatus("Room code copied."); }}>COPY ROOM CODE</button>
             <button className="exhibit-exit" onClick={() => void leaveGame()}>LEAVE GAME</button>
@@ -496,11 +548,20 @@ function ExhibitGame({ session, onExit }: { session: Session; onExit: () => void
         </aside>
       </div>
 
+      {inspectPopup && <div className="exhibit-modal-backdrop" onClick={() => setInspectPopup(null)}>
+        <section className="exhibit-inspect-modal" role="dialog" aria-modal="true" aria-labelledby="exhibit-inspect-title" onClick={event => event.stopPropagation()}>
+          <span className="exhibit-kicker">EVIDENCE</span>
+          <h2 id="exhibit-inspect-title">{inspectPopup.title}</h2>
+          <p>{inspectPopup.body}</p>
+          <button className="exhibit-primary" onClick={() => setInspectPopup(null)}>CONTINUE</button>
+        </section>
+      </div>}
+
       {panelOpen && <div className="exhibit-modal-backdrop">
         <form className="exhibit-panel-modal" onSubmit={solvePanel}>
-          <span className="exhibit-kicker">SECURITY TERMINAL · ACCESS REQUIRED</span>
-          <h2>Restore archive access</h2>
-          <p>Enter the four-digit sequence formed by the exhibit number and the museum opening time.</p>
+          <span className="exhibit-kicker">SECURITY</span>
+          <h2>Unlock Archive</h2>
+          <p>Enter the code from the two clues.</p>
           <div className="exhibit-code-hints">
             <span>EXHIBIT NO. <b>{snapshot?.room.state.inventory_found ? "43" : "??"}</b></span>
             <span>OPENING <b>{snapshot?.room.state.opening_found ? "09" : "??"}</b></span>
